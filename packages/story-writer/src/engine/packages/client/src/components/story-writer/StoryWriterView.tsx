@@ -23,9 +23,17 @@ import { storyWriterKeys, usePreferences, useStoryDocument, useStoryList } from 
 import { STORY_WRITER_ASSETS, storyWriterAssetUrl, type StoryWriterAsset } from "../../lib/story-writer/assets";
 import { downloadTextFile, storyFileName, storyToMarkdown, storyToPlainText } from "../../lib/story-writer/export";
 import { countWords, storyDisplayTitle, type StoryChapter, type StorySummary } from "../../lib/story-writer/model";
+import {
+  findStoryPartMarkers,
+  insertPartMarker,
+  nextPartPlacement,
+  removePartMarker,
+  stripPartTokens,
+  type PartMarkerRole,
+} from "../../lib/story-writer/part-markers";
 import { storyThemeVariables, type ResolvedColorMode } from "../../lib/story-writer/styles-shell";
 import { generateClientId } from "../../lib/utils";
-import { ActionBar, QuickReplyBar, type FullscreenControl } from "./ActionBar";
+import { ActionBar, QuickReplyBar, type FullscreenControl, type PartModeControl } from "./ActionBar";
 import { PromptPeekDialog } from "./PromptPeek";
 import { StickyNote } from "./StickyNote";
 import { StoryDocument } from "./StoryDocument";
@@ -137,6 +145,7 @@ export function StoryWriterView({ capabilityProps }: { capabilityProps: Record<s
   const [sectionRequest, setSectionRequest] = useState<{ id: SidebarSectionId; nonce: number } | null>(null);
   const [noteOpen, setNoteOpen] = useState(false);
   const [peekOpen, setPeekOpen] = useState(false);
+  const [partMode, setPartMode] = useState(false);
   const peekOpener = useRef<HTMLElement | null>(null);
   const dockRef = useRef<HTMLDivElement>(null);
   const [chapterBarHost, setChapterBarHost] = useState<HTMLDivElement | null>(null);
@@ -236,6 +245,84 @@ export function StoryWriterView({ capabilityProps }: { capabilityProps: Record<s
     (chapterId: string, markdown: string) => void saveChapter(chapterId, { text: markdown }),
     [saveChapter],
   );
+
+  // ── Rewrite Part marker mode ──
+
+  // The story's single pair, re-read from the chapters whenever a save moves them; one pair per story.
+  const partMarkers = useMemo(() => findStoryPartMarkers(chapters), [chapters]);
+  const partInvalid = partMarkers.status.kind === "invalid";
+
+  // A corrupt or split pair is detected on mode entry and on every chapter load, never silently.
+  useEffect(() => {
+    if (!partMode || !partInvalid) return;
+    toast.warning(t("part.invalidPair"));
+  }, [partMode, partInvalid, t]);
+
+  /** Applies a marker edit to a chapter through the normal save path, so markers persist like typed text. */
+  const applyPartEdit = useCallback(
+    (chapterId: string, edit: (markdown: string) => string) => {
+      const chapter = chapters.find((item) => item.id === chapterId);
+      if (!chapter) return;
+      const next = edit(chapter.text);
+      if (next !== chapter.text) onChapterChange(chapterId, next);
+    },
+    [chapters, onChapterChange],
+  );
+
+  /** A marker-mode click in a chapter body: the next placement, or a rejection with feedback. */
+  const handlePartClick = useCallback(
+    (chapterId: string, blockIndex: number) => {
+      const placement = nextPartPlacement(chapterId, partMarkers);
+      if (placement.role === "blocked") {
+        if (placement.reason === "cross-chapter") toast.warning(t("part.crossChapter"));
+        else if (placement.reason === "pair-exists") toast.info(t("part.pairExists"));
+        else toast.warning(t("part.invalidPair"));
+        return;
+      }
+      applyPartEdit(chapterId, (markdown) => insertPartMarker(markdown, blockIndex, placement.role));
+      toast.info(placement.role === "start" ? t("part.startPlaced") : t("part.endPlaced"));
+    },
+    [partMarkers, applyPartEdit, t],
+  );
+
+  /** A click on a placed pin removes that marker; the next click re-places it. */
+  const handlePartPinClick = useCallback(
+    (chapterId: string, role: PartMarkerRole) => {
+      applyPartEdit(chapterId, (markdown) => removePartMarker(markdown, role));
+    },
+    [applyPartEdit],
+  );
+
+  /** Clears both markers (and a corrupt pair) wherever they sit. */
+  const resetPartMarkers = useCallback(() => {
+    for (const chapter of chapters) {
+      const next = stripPartTokens(chapter.text);
+      if (next !== chapter.text) onChapterChange(chapter.id, next);
+    }
+  }, [chapters, onChapterChange]);
+
+  // Leaving a generation disables the mode: pins must not move while the chapter is streaming.
+  useEffect(() => {
+    if (generation.status !== "idle") setPartMode(false);
+  }, [generation.status]);
+
+  // Entering the mode drops the editing caret: a focused chapter body keeps its old Markdown until blur, so the
+  // pins of a placement would not show while it holds focus.
+  useEffect(() => {
+    if (!partMode) return;
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && active.classList.contains("sw-body")) active.blur();
+  }, [partMode]);
+
+  const partModeControl: PartModeControl | null =
+    data && settings
+      ? {
+          active: partMode,
+          hasMarkers: partMarkers.chapterId !== null,
+          setActive: setPartMode,
+          onReset: resetPartMarkers,
+        }
+      : null;
 
   // On phones the drawer covers the book: show the story the author just picked.
   const showStory = (id: string) => {
@@ -429,6 +516,10 @@ export function StoryWriterView({ capabilityProps }: { capabilityProps: Record<s
               editable={generation.status === "idle"}
               mariImageUrl={assetUrl(STORY_WRITER_ASSETS.mari)}
               chapterBarHost={chapterBarHost}
+              partModeActive={partMode}
+              partInvalid={partInvalid}
+              onPartClick={(chapterId, blockIndex) => handlePartClick(chapterId, blockIndex)}
+              onPartPinClick={handlePartPinClick}
               onChapterChange={onChapterChange}
               onStartChapter={onStartChapter}
             />
@@ -474,6 +565,7 @@ export function StoryWriterView({ capabilityProps }: { capabilityProps: Record<s
                 totalWords={totalWords}
                 targetWords={settings.targetWords}
                 fullscreen={fullscreen}
+                partMode={partModeControl}
                 onWrite={() => void generation.write("next")}
                 onContinue={() => void generation.write("continue")}
                 onRewrite={() => void rewriteLastChapter()}

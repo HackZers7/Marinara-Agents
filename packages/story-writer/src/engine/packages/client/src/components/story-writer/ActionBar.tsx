@@ -5,7 +5,9 @@ import { useId } from "react";
 import { useTranslation } from "react-i18next";
 import {
   CheckCheck,
+  Eraser,
   Feather,
+  Highlighter,
   Library,
   Loader2,
   Maximize2,
@@ -26,6 +28,15 @@ export interface FullscreenControl {
   exitLabel: string;
 }
 
+/** The state of the Rewrite Part marker mode the action bar toggles into. */
+export interface PartModeControl {
+  active: boolean;
+  /** A marker pair exists, so the reset control is worth showing. */
+  hasMarkers: boolean;
+  setActive(active: boolean): void;
+  onReset(): void;
+}
+
 export function ActionBar(props: {
   status: GenerationStatus;
   canWrite: boolean;
@@ -38,6 +49,7 @@ export function ActionBar(props: {
   totalWords: number;
   targetWords: number | null;
   fullscreen: FullscreenControl | null;
+  partMode: PartModeControl | null;
   onWrite(): void;
   onContinue(): void;
   onRewrite(): void;
@@ -161,6 +173,32 @@ export function ActionBar(props: {
             >
               <RotateCcw size={18} aria-hidden="true" />
             </button>
+          ) : null}
+          {props.chapterCount > 0 && props.partMode ? (
+            <>
+              {/* A toggle keeps one name; aria-pressed says whether marker mode is on. */}
+              <button
+                type="button"
+                className="sw-action-icon"
+                aria-pressed={props.partMode.active}
+                aria-label={t("actions.rewritePart")}
+                title={props.partMode.active ? t("actions.rewritePartExit") : t("actions.rewritePart")}
+                onClick={() => props.partMode!.setActive(!props.partMode!.active)}
+              >
+                <Highlighter size={18} aria-hidden="true" />
+              </button>
+              {props.partMode.active && props.partMode.hasMarkers ? (
+                <button
+                  type="button"
+                  className="sw-action-icon"
+                  aria-label={t("actions.rewritePartReset")}
+                  title={t("actions.rewritePartReset")}
+                  onClick={props.partMode.onReset}
+                >
+                  <Eraser size={18} aria-hidden="true" />
+                </button>
+              ) : null}
+            </>
           ) : null}
         </>
       )}

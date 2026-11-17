@@ -53,6 +53,9 @@
     "timeline": "Planning the timeline…",
     "continueLast": "Continue the last chapter",
     "rewriteLast": "Rewrite the last chapter",
+    "rewritePart": "Rewrite a part",
+    "rewritePartExit": "Leave Rewrite Part",
+    "rewritePartReset": "Clear the part markers",
     "rewriteTitle": "Rewrite chapter {{number}}?",
     "rewriteMessage": "The text of chapter {{number}} will be replaced by a new version. This cannot be undone.",
     "rewriteConfirm": "Rewrite",
@@ -228,6 +231,15 @@
       "user": "User",
       "assistant": "Assistant"
     }
+  },
+  "part": {
+    "crossChapter": "Both markers must sit in the same chapter. Click in the chapter your first marker is in.",
+    "pairExists": "Both markers are placed. Click a marker to remove it, or clear the pair to start over.",
+    "invalidPair": "A part marker looks wrong after editing. Click the surviving marker to remove it, then place both again.",
+    "startPlaced": "Start marker placed. Click where the part ends.",
+    "endPlaced": "Part selected.",
+    "startHint": "Start",
+    "endHint": "End"
   },
   "quickReplies": {
     "label": "Quick replies",
