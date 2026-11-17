@@ -34,6 +34,8 @@ import {
 import { storyThemeVariables, type ResolvedColorMode } from "../../lib/story-writer/styles-shell";
 import { generateClientId } from "../../lib/utils";
 import { ActionBar, QuickReplyBar, type FullscreenControl, type PartModeControl } from "./ActionBar";
+import { PartModePanel } from "./PartModePanel";
+import { PartPreviewDialog } from "./PartPreviewDialog";
 import { PromptPeekDialog } from "./PromptPeek";
 import { StickyNote } from "./StickyNote";
 import { StoryDocument } from "./StoryDocument";
@@ -146,6 +148,10 @@ export function StoryWriterView({ capabilityProps }: { capabilityProps: Record<s
   const [noteOpen, setNoteOpen] = useState(false);
   const [peekOpen, setPeekOpen] = useState(false);
   const [partMode, setPartMode] = useState(false);
+  // The Rewrite Part panel's own state: the instruction and the include-original choice survive mode switches.
+  const [partInstruction, setPartInstruction] = useState("");
+  const [partIncludeOriginal, setPartIncludeOriginal] = useState(true);
+  const [partPreviewDismissed, setPartPreviewDismissed] = useState(false);
   const peekOpener = useRef<HTMLElement | null>(null);
   const dockRef = useRef<HTMLDivElement>(null);
   const [chapterBarHost, setChapterBarHost] = useState<HTMLDivElement | null>(null);
@@ -301,9 +307,10 @@ export function StoryWriterView({ capabilityProps }: { capabilityProps: Record<s
     }
   }, [chapters, onChapterChange]);
 
-  // Leaving a generation disables the mode: pins must not move while the chapter is streaming.
+  // Leaving a generation disables the mode: pins must not move while the chapter is streaming. A part run is the
+  // mode's own generation: it keeps the mode (and the panel) while it streams into the preview.
   useEffect(() => {
-    if (generation.status !== "idle") setPartMode(false);
+    if (generation.status !== "idle" && generation.status !== "part") setPartMode(false);
   }, [generation.status]);
 
   // Entering the mode drops the editing caret: a focused chapter body keeps its old Markdown until blur, so the
@@ -318,11 +325,25 @@ export function StoryWriterView({ capabilityProps }: { capabilityProps: Record<s
     data && settings
       ? {
           active: partMode,
-          hasMarkers: partMarkers.chapterId !== null,
           setActive: setPartMode,
-          onReset: resetPartMarkers,
         }
       : null;
+
+  // A part run: the preview shows it unless the author closed it after the stream ended. A new run always reopens it.
+  const partPreview = generation.partPreview;
+  const partStreaming = generation.status === "part";
+  useEffect(() => {
+    if (partStreaming) setPartPreviewDismissed(false);
+  }, [partStreaming]);
+  const showPartPreview = !!partPreview && (!partStreaming ? !partPreviewDismissed : true);
+  const dismissPartPreview = useCallback(() => setPartPreviewDismissed(true), []);
+
+  // Leaving the mode also drops a finished preview's presence in the panel area; the draft stays in the hook until
+  // the next run replaces it (ticket 03 turns it into apply/edit).
+  const startPartGeneration = useCallback(() => {
+    setPartPreviewDismissed(false);
+    void generation.rewritePart(partInstruction, partIncludeOriginal);
+  }, [generation, partInstruction, partIncludeOriginal]);
 
   // On phones the drawer covers the book: show the story the author just picked.
   const showStory = (id: string) => {
@@ -502,6 +523,18 @@ export function StoryWriterView({ capabilityProps }: { capabilityProps: Record<s
       <div className="sw-frame" inert={peekOpen}>
         <div className="sw-stage" />
         <div className="sw-reader-slot">
+          {data && settings && partMode ? (
+            <PartModePanel
+              markersReady={partMarkers.status.kind === "ready"}
+              canGenerate={generation.canWrite}
+              instruction={partInstruction}
+              includeOriginal={partIncludeOriginal}
+              onInstructionChange={setPartInstruction}
+              onIncludeOriginalChange={setPartIncludeOriginal}
+              onGenerate={startPartGeneration}
+              onReset={resetPartMarkers}
+            />
+          ) : null}
           {data && settings ? (
             <Reader
               key={data.story.id}
@@ -615,6 +648,18 @@ export function StoryWriterView({ capabilityProps }: { capabilityProps: Record<s
         />
       </div>
       {peekOpen ? <PromptPeekDialog load={generation.peekPrompt} onClose={closePeek} /> : null}
+      {data && settings && showPartPreview && partPreview ? (
+        <PartPreviewDialog
+          preview={partPreview}
+          streaming={partStreaming}
+          theme={preferences.theme}
+          pageAnimation={preferences.pageAnimation}
+          storyTitle={storyDisplayTitle(settings, t("app.untitled"))}
+          storyDetails={storyDetails}
+          onStop={generation.stop}
+          onClose={dismissPartPreview}
+        />
+      ) : null}
     </div>
   );
 }

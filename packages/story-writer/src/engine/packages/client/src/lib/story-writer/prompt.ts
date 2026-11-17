@@ -12,6 +12,9 @@ import {
   type StorySettings,
   type TimelineEvent,
 } from "./model";
+import { type PartSpan, stripPartTokens } from "./part-markers";
+
+export type { PartSpan };
 
 export interface PromptCharacter {
   name: string;
@@ -72,6 +75,11 @@ function formatNumber(value: number): string {
 
 function totalWords(chapters: StoryChapter[]): number {
   return chapters.reduce((sum, chapter) => sum + countWords(chapter.text), 0);
+}
+
+/** Chapter text as the model may see it: Rewrite Part tokens are author furniture, never story prose. */
+function plainText(markdown: string): string {
+  return stripPartTokens(markdown);
 }
 
 /** The user message that asks for more; a cleared field falls back to the default, since an empty turn breaks providers. */
@@ -242,7 +250,12 @@ export function chapterRequest(settings: StorySettings, quickReply?: string, rew
  */
 export function loreScanText(settings: StorySettings, chapters: StoryChapter[], request: string): string {
   const scanned = request === continueMessageOf(settings) ? "" : request;
-  return [settings.overview, settings.authorNote, ...chapters.slice(-3).map((chapter) => chapter.text), scanned]
+  return [
+    settings.overview,
+    settings.authorNote,
+    ...chapters.slice(-3).map((chapter) => plainText(chapter.text)),
+    scanned,
+  ]
     .filter((part) => part.trim())
     .join("\n\n")
     .slice(-LORE_SCAN_CHARS);
@@ -258,6 +271,19 @@ export function buildChapterMessages(input: {
   /** The final user message (a quick reply, or a rewritten chapter's own request); empty = the continue message. */
   request?: string;
 }): ChatMessage[] {
+  return assembleChapterMessages(input);
+}
+
+/** Body text that replaces the `length` / `formatting` sections, for the span-rewrite variant of the same assembly. */
+interface SectionOverrides {
+  length?: string;
+  formatting?: string;
+}
+
+function assembleChapterMessages(
+  input: Parameters<typeof buildChapterMessages>[0],
+  overrides?: SectionOverrides,
+): ChatMessage[] {
   const { settings, chapters, characters, personas, lore } = input;
   const names = storyNames(characters, personas);
   const continueMessage = continueMessageOf(settings);
@@ -278,7 +304,7 @@ export function buildChapterMessages(input: {
       const title = chapterTitle(chapter.text) || "untitled";
       summaries.push(`Chapter ${index + 1} — ${title} (summary): ${chapter.summary.trim()}`);
     } else if (chapter.text.trim()) {
-      full.push({ request: requestOf(chapter), text: chapter.text.trimEnd() });
+      full.push({ request: requestOf(chapter), text: plainText(chapter.text).trimEnd() });
     }
   });
 
@@ -306,10 +332,10 @@ export function buildChapterMessages(input: {
       section("story_notes", replaceMacros(settings.notes, names)),
       settings.timeline.length ? section("timeline", `${TIMELINE_INTRO}\n${timelineList(settings.timeline)}`) : "",
       section("earlier_chapters", earlierChapters),
-      section("length", lengthSection(settings, chapters, number, partial)),
+      overrides?.length ?? section("length", lengthSection(settings, chapters, number, partial)),
       section("banned_phrases", banned.length ? `Never use these words or phrases: ${banned.join(", ")}` : ""),
       section("language", language ? `Write the story in ${language}.` : ""),
-      section("formatting", formattingSection(settings, number, !!partial)),
+      overrides?.formatting ?? section("formatting", formattingSection(settings, number, !!partial)),
     ]);
   // The summaries take the room the other sections leave, so the system message stays under the route's limit;
   // the newest summaries are kept.
@@ -323,7 +349,7 @@ export function buildChapterMessages(input: {
   if (partial) {
     messages.push(
       { role: "user", content: requestOf(partial) },
-      { role: "assistant", content: partial.text.trimEnd() },
+      { role: "assistant", content: plainText(partial.text).trimEnd() },
     );
   }
   messages.push({ role: "user", content: input.request?.trim() ? input.request : continueMessage });
@@ -396,6 +422,142 @@ export async function planChapter(input: {
   };
 }
 
+// ── Span rewrite (Rewrite Part) ──
+
+/** The assistant turn for a chapter whose marked span is being rewritten: the position is held by a placeholder. */
+const PART_PLACEHOLDER = "[…]";
+
+function spanLengthSection(spanWords: number): string {
+  return `You are rewriting one part of a chapter, not writing a whole chapter: the part is about ${formatNumber(spanWords)} words.`;
+}
+
+function spanFormattingSection(): string {
+  return [
+    "Write only the new text of the part between <part> and </part>.",
+    "Match the voice, tense and formatting of the surrounding chapter text.",
+    "No notes, summaries or commentary before or after the part.",
+  ].join(" ");
+}
+
+function spanRequest(input: {
+  instruction: string;
+  span: string;
+  before: string;
+  after: string;
+  includeOriginal: boolean;
+}): string {
+  const quote = (tag: string, body: string) => section(tag, body);
+  const parts = [
+    quote("part_before", input.before),
+    // The original is quoted only when the author chose to send it; the placeholder keeps the position either way.
+    input.includeOriginal ? quote("part", input.span) : "",
+    quote("part_after", input.after),
+    input.includeOriginal ? "" : `The original text of the part is not shown: rewrite it from the context around it.`,
+    quote(
+      "rewrite_request",
+      `${input.instruction.trim()}\n\nRewrite the part${input.includeOriginal ? " between <part> and </part>" : ""}. Return only the new text of the part, in Markdown, with no commentary.`,
+    ),
+  ];
+  return joinSections(parts.filter(Boolean));
+}
+
+/**
+ * The messages a Rewrite Part run sends: the story's full context and history exactly as a chapter prompt carries it,
+ * with the marked chapter's span replaced by a placeholder, and the rewrite instruction as the final request. Every
+ * piece of chapter text is token-free (the assembly strips markers, and `span` comes token-free from partSpanOf).
+ */
+export function buildRewriteSpanMessages(input: {
+  settings: StorySettings;
+  /** All chapters, as the story holds them; history replays them like a chapter run. */
+  chapters: StoryChapter[];
+  /** The marked chapter, whose assistant turn carries the placeholder. */
+  chapter: StoryChapter;
+  span: PartSpan;
+  instruction: string;
+  includeOriginal: boolean;
+  characters: PromptCharacter[];
+  personas: PromptCharacter[];
+  lore: PromptLoreEntry[];
+}): ChatMessage[] {
+  const { chapter, span } = input;
+  const request = spanRequest({
+    instruction: input.instruction,
+    span: span.span,
+    before: span.before,
+    after: span.after,
+    includeOriginal: input.includeOriginal,
+  });
+  // The marked chapter replays with the span's position held by a placeholder; plainText strips the tokens in
+  // assembleChapterMessages, and the placeholder is re-inserted after them.
+  const withPlaceholder = [span.before, PART_PLACEHOLDER, span.after].filter((part) => part.trim()).join("\n\n");
+  const rewritten: StoryChapter = { ...chapter, text: withPlaceholder };
+  const chapters = input.chapters.some((item) => item.id === chapter.id)
+    ? input.chapters.map((item) => (item.id === chapter.id ? rewritten : item))
+    : [...input.chapters, rewritten];
+  return assembleChapterMessages(
+    {
+      settings: input.settings,
+      chapters,
+      mode: "continue",
+      characters: input.characters,
+      personas: input.personas,
+      lore: input.lore,
+      request,
+    },
+    {
+      length: section("length", spanLengthSection(countWords(span.span))),
+      formatting: section("formatting", spanFormattingSection()),
+    },
+  );
+}
+
+export interface RewriteSpanPlan {
+  chapterNumber: number;
+  /** The instruction, trimmed: what the run stores as its request. */
+  request: string;
+  messages: ChatMessage[];
+  maxTokens: number;
+}
+
+/** Everything a Rewrite Part run sends, built before the story changes. */
+export async function planRewriteSpan(input: {
+  settings: StorySettings;
+  chapters: StoryChapter[];
+  chapter: StoryChapter;
+  span: PartSpan;
+  instruction: string;
+  includeOriginal: boolean;
+  savedMaxTokens: number | null;
+  sources: PromptSources;
+}): Promise<RewriteSpanPlan> {
+  const { settings } = input;
+  const request = input.instruction.trim();
+  const [characters, personas, lore] = await Promise.all([
+    input.sources.characters(settings.characterIds),
+    input.sources.personas(settings.personaIds),
+    // The scan reads the story the way a chapter run would: token-free, with the rewrite request as the request.
+    input.sources.lore(settings.lorebookIds, loreScanText(settings, input.chapters, request)),
+  ]);
+  const chapterNumber = Math.max(1, input.chapters.findIndex((chapter) => chapter.id === input.chapter.id) + 1);
+  return {
+    chapterNumber,
+    request,
+    messages: buildRewriteSpanMessages({
+      settings,
+      chapters: input.chapters,
+      chapter: input.chapter,
+      span: input.span,
+      instruction: request,
+      includeOriginal: input.includeOriginal,
+      characters,
+      personas,
+      lore,
+    }),
+    // The budget covers what the run asks for: the span's replacement, not a whole chapter.
+    maxTokens: chapterTokenBudget(countWords(input.span.span), input.savedMaxTokens),
+  };
+}
+
 // ── Summaries ──
 
 export function buildSummaryMessages(input: {
@@ -415,7 +577,7 @@ export function buildSummaryMessages(input: {
   const attributes = `number="${input.chapterNumber}"${title ? ` title="${title}"` : ""}`;
   return [
     { role: "system", content: system },
-    { role: "user", content: `<chapter ${attributes}>\n${input.chapter.text.trim()}\n</chapter>` },
+    { role: "user", content: `<chapter ${attributes}>\n${plainText(input.chapter.text).trim()}\n</chapter>` },
   ];
 }
 
@@ -452,7 +614,11 @@ export function buildTimelineMessages(input: { settings: StorySettings; chapters
   // Every written chapter reaches the planner, so it can mark earlier events done: its summary, or else the end of
   // its text. The excerpts share one budget, newest first; chapters past it are named rather than silently dropped.
   const unsummarized = chapters
-    .map((chapter, index) => ({ text: chapter.text.trim(), number: index + 1, summarized: !!chapter.summary.trim() }))
+    .map((chapter, index) => ({
+      text: plainText(chapter.text).trim(),
+      number: index + 1,
+      summarized: !!chapter.summary.trim(),
+    }))
     .filter((entry) => entry.text && !entry.summarized);
   const share = Math.max(TIMELINE_EXCERPT_MIN, Math.floor(TIMELINE_EXCERPT_CHARS / Math.max(1, unsummarized.length)));
   let budget = TIMELINE_EXCERPT_CHARS;

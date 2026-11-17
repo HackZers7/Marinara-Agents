@@ -51,11 +51,11 @@
     "writingStatus": "Writing chapter {{number}}…",
     "summarizing": "Summarizing…",
     "timeline": "Planning the timeline…",
+    "partStatus": "Rewriting the part…",
     "continueLast": "Continue the last chapter",
     "rewriteLast": "Rewrite the last chapter",
     "rewritePart": "Rewrite a part",
     "rewritePartExit": "Leave Rewrite Part",
-    "rewritePartReset": "Clear the part markers",
     "rewriteTitle": "Rewrite chapter {{number}}?",
     "rewriteMessage": "The text of chapter {{number}} will be replaced by a new version. This cannot be undone.",
     "rewriteConfirm": "Rewrite",
@@ -239,7 +239,25 @@
     "startPlaced": "Start marker placed. Click where the part ends.",
     "endPlaced": "Part selected.",
     "startHint": "Start",
-    "endHint": "End"
+    "endHint": "End",
+    "panel": {
+      "label": "Rewrite Part controls",
+      "title": "Rewrite a part",
+      "hint": "Place both markers in the chapter, describe what to change, and generate. The result streams into a preview; nothing changes until it is applied."
+    },
+    "instruction": "Rewrite instruction",
+    "instructionPlaceholder": "e.g. Make this scene tenser; keep the dialogue and the ending.",
+    "includeOriginal": "Include the original text",
+    "includeOriginalHint": "The model sees the selected text and rewrites it.",
+    "riskNote": "Without the original, the rewrite may come back longer or shorter and drift from established facts.",
+    "generate": "Generate rewrite",
+    "reset": "Reset markers",
+    "generatePairMissing": "Place both part markers before generating a rewrite.",
+    "generateAborted": "Rewrite stopped. The draft was discarded; your markers are still in place.",
+    "preview": {
+      "title": "Rewriting part of chapter {{number}}",
+      "close": "Close the preview"
+    }
   },
   "quickReplies": {
     "label": "Quick replies",

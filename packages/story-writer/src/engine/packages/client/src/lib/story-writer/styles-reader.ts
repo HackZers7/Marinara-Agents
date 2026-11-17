@@ -439,6 +439,16 @@ ${R}[data-sw-part-mode="true"] .sw-body [data-sw-part-end] {
 ${R}[data-sw-part-mode="true"][data-sw-part-invalid="true"] .sw-body :is([data-sw-part-start], [data-sw-part-end])::before {
   background: repeating-linear-gradient(to bottom, var(--sw-r-accent) 0 4px, transparent 4px 7px);
 }
+/* The Rewrite Part preview: the draft between the marker borders reads normally; the surrounding chapter text reads
+   gray. The draft middle (no border of its own) is what follows the start border and does not follow the end border. */
+${R}[data-sw-part-preview="true"] .sw-body > * {
+  color: var(--sw-r-muted);
+}
+${R}[data-sw-part-preview="true"] .sw-body > [data-sw-part-start],
+${R}[data-sw-part-preview="true"] .sw-body > [data-sw-part-end],
+${R}[data-sw-part-preview="true"] .sw-body > [data-sw-part-start] ~ :not([data-sw-part-end] ~ *) {
+  color: inherit;
+}
 
 /* ── Title page ── */
 ${R} .sw-title-page {
