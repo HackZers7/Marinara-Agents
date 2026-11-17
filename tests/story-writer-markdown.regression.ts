@@ -10,6 +10,12 @@ import {
   markdownToPlainText,
   type MarkdownNode,
 } from "../packages/story-writer/src/engine/packages/client/src/lib/story-writer/markdown.ts";
+import { countWords } from "../packages/story-writer/src/engine/packages/client/src/lib/story-writer/model.ts";
+import {
+  PART_END_TOKEN,
+  PART_START_TOKEN,
+  insertPartMarker,
+} from "../packages/story-writer/src/engine/packages/client/src/lib/story-writer/part-markers.ts";
 import {
   storyFileName,
   storyToMarkdown,
@@ -18,14 +24,21 @@ import {
 
 interface FakeNode extends MarkdownNode {
   childNodes: FakeNode[];
+  attributes: Record<string, string>;
 }
 
-function element(name: string, children: Array<FakeNode | string> = []): FakeNode {
+function element(
+  name: string,
+  children: Array<FakeNode | string> = [],
+  attributes: Record<string, string> = {},
+): FakeNode {
   return {
     nodeType: 1,
     nodeName: name.toUpperCase(),
     childNodes: children.map((child) => (typeof child === "string" ? textNode(child) : child)),
     textContent: null,
+    attributes,
+    getAttribute: (attribute: string) => attributes[attribute] ?? null,
   };
 }
 
@@ -35,14 +48,14 @@ function textNode(value: string): FakeNode {
 
 const ENTITIES: Record<string, string> = { "&lt;": "<", "&gt;": ">", "&quot;": '"', "&#39;": "'", "&amp;": "&" };
 
-/** Just enough of an HTML parser for the tags markdownToHtml writes. */
+/** Just enough of an HTML parser for the tags and attributes markdownToHtml writes. */
 function parseHtml(html: string): FakeNode {
   const root = element("div");
   const stack = [root];
-  for (const match of html.matchAll(/<(\/?)([a-z0-9]+)>|([^<]+)/gi)) {
-    const top = stack[stack.length - 1]!;
-    if (match[3] !== undefined) {
-      top.childNodes.push(textNode(match[3].replace(/&(?:lt|gt|quot|#39|amp);/g, (entity) => ENTITIES[entity]!)));
+  for (const match of html.matchAll(/<(\/?)([a-z0-9]+)((?:\s+[a-z-]+="[^"]*")*)>|([^<]+)/gi)) {
+    const top = stack[stack.length - 1];
+    if (match[4] !== undefined) {
+      top.childNodes.push(textNode(match[4].replace(/&(?:lt|gt|quot|#39|amp);/g, (entity) => ENTITIES[entity]!)));
       continue;
     }
     if (match[1]) {
@@ -50,7 +63,11 @@ function parseHtml(html: string): FakeNode {
       continue;
     }
     const name = match[2]!.toLowerCase();
-    const node = element(name);
+    const attributes: Record<string, string> = {};
+    for (const attribute of match[3]?.matchAll(/\s([a-z-]+)="([^"]*)"/gi) ?? []) {
+      attributes[attribute[1]!] = attribute[2]!.replace(/&(?:lt|gt|quot|#39|amp);/g, (entity) => ENTITIES[entity]!);
+    }
+    const node = element(name, [], attributes);
     top.childNodes.push(node);
     if (name !== "br" && name !== "hr") stack.push(node);
   }
@@ -204,4 +221,81 @@ test("censored words stay literal, and deep quote nesting cannot overflow the st
   const html = markdownToHtml(deep);
   assert.equal(html.match(/<blockquote>/g)?.length, 8);
   assert.ok(html.endsWith("</blockquote>".repeat(8)));
+});
+
+// ── Rewrite Part markers ──
+
+/** A marker pair around the chapter's second paragraph, as placement leaves it. */
+function markedChapter(): string {
+  const chapter = "# The Storm\n\nIt was a dark night.\n\nThe wind howled.\n\n***\n\nAfter.";
+  return insertPartMarker(insertPartMarker(chapter, 1, "start"), 3, "end");
+}
+
+test("part marker tokens never render, and survive the html round trip with their formatting intact", () => {
+  const markdown = markedChapter();
+  const html = markdownToHtml(markdown);
+  // The literal comment text never reaches the page...
+  assert.ok(!html.includes("sw:part"), `no raw token in ${html}`);
+  // ...but the bordered paragraphs carry the borders: the span runs from the paragraph the start borders to the
+  // paragraph the end borders.
+  assert.ok(
+    html.includes('<p data-sw-part-start="">It was a dark night.</p><p data-sw-part-end="">The wind howled.</p>'),
+    `bordered span paragraphs in ${html}`,
+  );
+  // Rendering is exactly the stripped chapter's rendering plus the attributes: no text, no extra blocks.
+  const strippedHtml = markdownToHtml(stripTokens(markdown));
+  assert.equal(html.replace(/ data-sw-part-(?:start|end)=""/g, ""), strippedHtml);
+  // The serializer emits the tokens back, so editing around them keeps them in the chapter.
+  assert.equal(htmlToMarkdown(parseHtml(html)), markdown);
+  assert.equal(markdownToHtml(htmlToMarkdown(parseHtml(html))), html);
+  // Manual editing around a marker keeps it: a paragraph typed before the chapter survives serialization, and the
+  // token stays on its own line after it.
+  const edited = parseHtml(`<p>New opening.</p>${html}`);
+  const editedMarkdown = htmlToMarkdown(edited);
+  assert.ok(editedMarkdown.startsWith("New opening."));
+  assert.ok(editedMarkdown.includes(`# The Storm\n\n${PART_START_TOKEN}\n\nIt was a dark night.`));
+  // Inline formatting typed around a token also survives: the token is still a block of its own.
+  const formatted = parseHtml(`${html}<p>A <em>styled</em> tail.</p>`);
+  assert.ok(
+    htmlToMarkdown(formatted).endsWith(`${PART_END_TOKEN}\n\n***\n\nAfter.\n\nA *styled* tail.`),
+    `token and formatting kept: ${htmlToMarkdown(formatted)}`,
+  );
+  // A span bounded by headings and a quote round-trips too: the border rides on any block kind.
+  const bounded = `${PART_START_TOKEN}\n\n## Part two\n\n> quoted\n\n${PART_END_TOKEN}`;
+  const boundedHtml = markdownToHtml(bounded);
+  assert.equal(
+    boundedHtml,
+    '<h2 data-sw-part-start="">Part two</h2><blockquote data-sw-part-end=""><p>quoted</p></blockquote>',
+  );
+  assert.equal(htmlToMarkdown(parseHtml(boundedHtml)), bounded);
+  // An empty span (the end placed on the same block as the start) keeps its order through the round trip.
+  const emptySpan = `# H\n\n${PART_START_TOKEN}\n\n${PART_END_TOKEN}\n\nTail.`;
+  const emptyHtml = markdownToHtml(emptySpan);
+  assert.equal(emptyHtml, '<h1>H</h1><p data-sw-part-start="" data-sw-part-end=""></p><p>Tail.</p>');
+  assert.equal(htmlToMarkdown(parseHtml(emptyHtml)), emptySpan);
+});
+
+test("plain text and word counts ignore part marker tokens", () => {
+  const markdown = markedChapter();
+  assert.equal(markdownToPlainText(markdown), markdownToPlainText(stripTokens(markdown)));
+  assert.equal(countWords(markdown), countWords(stripTokens(markdown)));
+});
+
+function stripTokens(markdown: string): string {
+  return markdown
+    .split("\n")
+    .filter((line) => line.trim() !== PART_START_TOKEN && line.trim() !== PART_END_TOKEN)
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+test("a token-like sequence typed as prose stays escaped text and never becomes an anchor", () => {
+  const prose = `He wrote ${PART_START_TOKEN} in the margin.`;
+  const html = markdownToHtml(prose);
+  assert.ok(!html.includes("data-sw-part"), `no anchor from prose in ${html}`);
+  assert.ok(html.includes("&lt;!--sw:part-start--&gt;"), "the raw text is still escaped, not swallowed");
+  // Any other HTML comment is still prose: only the exact tokens are ever treated as markers.
+  const other = markdownToHtml("<!-- not a marker -->");
+  assert.equal(other, "<p>&lt;!-- not a marker --&gt;</p>");
 });

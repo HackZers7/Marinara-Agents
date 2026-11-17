@@ -393,16 +393,17 @@ export function normalizeChapterPatch(patch: unknown): ChapterPatch {
 
 // ── Text helpers shared by the client, the server and the prompt ──
 
-/** Counts words the way a reader would: Markdown markers and scene breaks do not count. */
+/** Counts words the way a reader would: Markdown markers, scene breaks and Rewrite Part tokens do not count. */
 export function countWords(markdown: string): number {
   const plain = markdown
     .replace(/^\s{0,3}(?:#{1,6}\s+|>\s?)/gm, "")
     .replace(/^\s*(?:\*{3,}|-{3,}|_{3,})\s*$/gm, " ")
+    .replace(/^\s*<!--sw:part-(?:start|end)-->\s*$/gm, " ")
     .replace(/[*_~=`]+/g, "");
-  const matches = plain.match(/[\p{L}\p{N}][\p{L}\p{N}'’-]*/gu);
+  const matches = plain.match(/[\p{L}\p{N}][\p{L}\p{N}’’-]*/gu);
   const words = matches?.length ?? 0;
   // CJK text has no spaces: count each ideograph/kana as a word.
-  const cjk = plain.match(/[぀-ヿ㐀-鿿豈-﫿]/g)?.length ?? 0;
+  const cjk = plain.match(/[぀-ヿ㐀-鿿豈-﫿]/g)?.length ?? 0;
   return cjk > words ? cjk : words;
 }
 

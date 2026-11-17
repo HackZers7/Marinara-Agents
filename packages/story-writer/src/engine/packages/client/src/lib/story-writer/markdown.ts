@@ -10,6 +10,8 @@ export interface MarkdownNode {
   nodeName: string;
   childNodes: ArrayLike<MarkdownNode>;
   textContent: string | null;
+  /** Real DOM elements have it; marker anchors are recognized through it. */
+  getAttribute?(name: string): string | null;
 }
 
 const ELEMENT_NODE = 1;
@@ -19,6 +21,23 @@ const HTML_ESCAPES: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "
 const HEADING = /^\s{0,3}(#{1,3})\s+(.+?)(?:\s+#+)?\s*$/;
 const HR = /^\s{0,3}(?:(?:\*\s*){3,}|(?:-\s*){3,}|(?:_\s*){3,})$/;
 const QUOTE = /^\s{0,3}>\s?(.*)$/;
+
+// ── Rewrite Part markers ──
+
+/** The Rewrite Part token that opens the marked span, stored in the chapter Markdown on its own line. */
+export const PART_START_TOKEN = "<!--sw:part-start-->";
+/** The Rewrite Part token that closes the marked span. */
+export const PART_END_TOKEN = "<!--sw:part-end-->";
+/** Which end of the marked span a token or pin belongs to. */
+export type PartMarkerRole = "start" | "end";
+
+/** The marker a line holds, when the token stands on the line alone; one typed inside prose is prose. */
+export function partTokenOfLine(line: string): PartMarkerRole | null {
+  const trimmed = line.trim();
+  if (trimmed === PART_START_TOKEN) return "start";
+  if (trimmed === PART_END_TOKEN) return "end";
+  return null;
+}
 
 // [pattern, HTML replacement, plain-text replacement]. Order matters: the longer markers go first. Emphasis never starts
 // or ends on an asterisk, so a censored "f***" stays literal instead of becoming an empty emphasis.
@@ -51,12 +70,27 @@ export function markdownToHtml(markdown: string, depth = 0): string {
   const html: string[] = [];
   let paragraph: string[] = [];
   let quote: string[] | null = null;
+  // Rewrite Part markers ride as attributes on the blocks they border, so the flow of blocks — and with it the
+  // pagination and the opening-page CSS — is exactly what it is without the markers.
+  let startBefore = false;
+  const open = (tag: string) => {
+    const marked = startBefore ? tag.replace(">", ` data-sw-part-start="">`) : tag;
+    startBefore = false;
+    return marked;
+  };
+  const endAfterLast = () => {
+    const last = html[html.length - 1];
+    // An end with no block before it: the chapter opens with the end of the span.
+    if (last !== undefined) html[html.length - 1] = last.replace(">", ` data-sw-part-end="">`, 1);
+    else html.push(`<p data-sw-part-end=""></p>`);
+  };
   const flushParagraph = () => {
-    if (paragraph.length) html.push(`<p>${paragraph.map(inlineHtml).join("<br>")}</p>`);
+    if (paragraph.length) html.push(`${open("<p>")}${paragraph.map(inlineHtml).join("<br>")}</p>`);
+    // An empty flush keeps a waiting start marker waiting for the next block.
     paragraph = [];
   };
   const flushQuote = () => {
-    if (quote) html.push(`<blockquote>${markdownToHtml(quote.join("\n"), depth + 1)}</blockquote>`);
+    if (quote) html.push(`${open("<blockquote>")}${markdownToHtml(quote.join("\n"), depth + 1)}</blockquote>`);
     quote = null;
   };
 
@@ -69,26 +103,41 @@ export function markdownToHtml(markdown: string, depth = 0): string {
       continue;
     }
     flushQuote();
+    const part = depth === 0 ? partTokenOfLine(line) : null;
+    if (part) {
+      // A Rewrite Part marker line: no prose, only a border on the block before or after it.
+      flushParagraph();
+      if (part === "start") startBefore = true;
+      else {
+        // An end directly after its start (an empty span): give the pending start its own anchor first, so
+        // the pair keeps its order in the DOM and through the serializer round trip.
+        if (startBefore) html.push(`<p data-sw-part-start=""></p>`);
+        startBefore = false;
+        endAfterLast();
+      }
+      continue;
+    }
     if (!line.trim()) {
       flushParagraph();
       continue;
     }
     if (HR.test(line)) {
       flushParagraph();
-      html.push("<hr>");
+      html.push(open("<hr>"));
       continue;
     }
     const heading = HEADING.exec(line);
     if (heading?.[1] && heading[2]) {
       flushParagraph();
       const level = heading[1].length;
-      html.push(`<h${level}>${inlineHtml(heading[2])}</h${level}>`);
+      html.push(`${open(`<h${level}>`)}${inlineHtml(heading[2])}</h${level}>`);
       continue;
     }
     paragraph.push(line);
   }
   flushParagraph();
   flushQuote();
+  if (startBefore) html.push(`<p data-sw-part-start=""></p>`);
   return html.join("");
 }
 
@@ -97,6 +146,7 @@ export function markdownToPlainText(markdown: string): string {
   return markdown
     .replace(/\r\n?/g, "\n")
     .split("\n")
+    .filter((line) => partTokenOfLine(line) === null)
     .map((line) => {
       if (HR.test(line)) return "* * *";
       const heading = HEADING.exec(line);
@@ -110,7 +160,8 @@ export function markdownToPlainText(markdown: string): string {
 
 // ── Editable DOM → Markdown ──
 
-const BLOCK_ELEMENTS = new Set([
+/** The element names the serializer treats as blocks; the DOM-side marker mapping counts the same ones. */
+export const MARKDOWN_BLOCK_ELEMENTS = new Set([
   "p",
   "div",
   "h1",
@@ -128,6 +179,8 @@ const BLOCK_ELEMENTS = new Set([
   "section",
   "article",
 ]);
+
+const BLOCK_ELEMENTS = MARKDOWN_BLOCK_ELEMENTS;
 
 const INLINE_MARKERS: Record<string, string> = {
   em: "*",
@@ -176,6 +229,8 @@ function blockMarkdown(node: MarkdownNode): string[] {
       continue;
     }
     flush();
+    // A Rewrite Part border rides on the block element itself; its token is a block before or after it.
+    if (partRoleOfElement(child, "start")) blocks.push(PART_START_TOKEN);
     if (name === "hr") {
       blocks.push("***");
     } else if (/^h[1-6]$/.test(name)) {
@@ -187,9 +242,15 @@ function blockMarkdown(node: MarkdownNode): string[] {
     } else {
       blocks.push(...blockMarkdown(child));
     }
+    if (partRoleOfElement(child, "end")) blocks.push(PART_END_TOKEN);
   }
   flush();
   return blocks;
+}
+
+/** Whether a rendered block carries the given Rewrite Part border. */
+function partRoleOfElement(node: MarkdownNode, role: "start" | "end"): boolean {
+  return node.getAttribute?.(`data-sw-part-${role}`) === "";
 }
 
 /** Serializes an edited chapter body back to Markdown; empty paragraphs disappear and trailing space is trimmed. */
