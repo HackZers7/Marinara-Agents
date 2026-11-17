@@ -975,12 +975,42 @@ const DEVICE_RULES = `
   ${R} :is(.sw-section-body, .sw-save-state .sw-save-dot) { animation: none; }
 }`;
 
+// Rewrite Part: the mode's side panel and the preview dialog. Gray context in the preview is styled in
+// styles-reader.ts (the span tint), riding the same marker attributes the renderer already emits.
+const PART_RULES = `
+${R} .sw-part-panel {
+  position: absolute; top: 14px; z-index: 26; width: 252px; max-height: calc(100% - 28px); padding: 12px;
+  display: grid; gap: 10px; align-content: start; overflow-y: auto; overscroll-behavior: contain;
+  border: 1px solid var(--sw-panel-border); border-radius: 12px;
+  background: var(--sw-panel-texture), var(--sw-panel-bg); color: var(--sw-panel-fg);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+}
+${R} .sw-part-panel-head h2 { margin: 0; font-family: var(--sw-heading-font); font-size: 15px; color: var(--sw-heading-fg); }
+${R} .sw-part-panel .sw-textarea { min-height: 84px; }
+${R} .sw-part-risk { color: var(--sw-danger, #b3452b); }
+${R} .sw-part-preview-scrim { display: block; z-index: 50; }
+${R} .sw-part-preview {
+  position: absolute; inset: 16px 16px calc(16px + ${SAFE_BOTTOM}); z-index: 51;
+  display: flex; flex-direction: column; min-height: 0; overflow: hidden; border-radius: 14px;
+  background: var(--sw-panel-texture), var(--sw-panel-bg); color: var(--sw-panel-fg);
+  box-shadow: 0 0 0 1px var(--sw-panel-border), 0 24px 64px rgba(0, 0, 0, 0.45);
+}
+${R} .sw-part-preview:focus { outline: none; }
+${R} .sw-part-preview-head { display: flex; flex: none; align-items: center; gap: 8px; padding: 10px 10px 6px 18px; }
+${R} .sw-part-preview-head h2 {
+  flex: 1; min-width: 0; margin: 0; font-family: var(--sw-heading-font); font-size: 16px; color: var(--sw-heading-fg);
+}
+${R} .sw-part-preview-words { color: var(--sw-panel-muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+${R} .sw-part-preview-stage { position: relative; flex: 1; min-height: 0; }
+${R} .sw-part-preview-stage .sw-reader { position: absolute; inset: 0; }`;
+
 export const SHELL_STYLES = [
   ROOT_RULES,
   THEME_RULES,
   CONTROL_RULES,
   DRAWER_RULES,
   PEEK_RULES,
+  PART_RULES,
   NOTE_RULES,
   ACTION_RULES,
   LAYOUT_RULES,

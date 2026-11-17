@@ -5,7 +5,6 @@ import { useId } from "react";
 import { useTranslation } from "react-i18next";
 import {
   CheckCheck,
-  Eraser,
   Feather,
   Highlighter,
   Library,
@@ -31,10 +30,7 @@ export interface FullscreenControl {
 /** The state of the Rewrite Part marker mode the action bar toggles into. */
 export interface PartModeControl {
   active: boolean;
-  /** A marker pair exists, so the reset control is worth showing. */
-  hasMarkers: boolean;
   setActive(active: boolean): void;
-  onReset(): void;
 }
 
 export function ActionBar(props: {
@@ -72,7 +68,9 @@ export function ActionBar(props: {
       ? t("actions.writingStatus", { number })
       : props.status === "summarizing"
         ? t("actions.summarizing")
-        : t("actions.timeline");
+        : props.status === "part"
+          ? t("actions.partStatus")
+          : t("actions.timeline");
   const target = props.targetWords;
   const percent = target ? Math.min(100, Math.round((props.totalWords / target) * 100)) : 0;
   const fullscreen = props.fullscreen;
@@ -175,30 +173,18 @@ export function ActionBar(props: {
             </button>
           ) : null}
           {props.chapterCount > 0 && props.partMode ? (
-            <>
-              {/* A toggle keeps one name; aria-pressed says whether marker mode is on. */}
-              <button
-                type="button"
-                className="sw-action-icon"
-                aria-pressed={props.partMode.active}
-                aria-label={t("actions.rewritePart")}
-                title={props.partMode.active ? t("actions.rewritePartExit") : t("actions.rewritePart")}
-                onClick={() => props.partMode!.setActive(!props.partMode!.active)}
-              >
-                <Highlighter size={18} aria-hidden="true" />
-              </button>
-              {props.partMode.active && props.partMode.hasMarkers ? (
-                <button
-                  type="button"
-                  className="sw-action-icon"
-                  aria-label={t("actions.rewritePartReset")}
-                  title={t("actions.rewritePartReset")}
-                  onClick={props.partMode.onReset}
-                >
-                  <Eraser size={18} aria-hidden="true" />
-                </button>
-              ) : null}
-            </>
+            // A toggle keeps one name; aria-pressed says whether marker mode is on. The mode's panel (instruction,
+            // generate, reset markers) lives beside the book while the mode is on.
+            <button
+              type="button"
+              className="sw-action-icon"
+              aria-pressed={props.partMode.active}
+              aria-label={t("actions.rewritePart")}
+              title={props.partMode.active ? t("actions.rewritePartExit") : t("actions.rewritePart")}
+              onClick={() => props.partMode!.setActive(!props.partMode!.active)}
+            >
+              <Highlighter size={18} aria-hidden="true" />
+            </button>
           ) : null}
         </>
       )}

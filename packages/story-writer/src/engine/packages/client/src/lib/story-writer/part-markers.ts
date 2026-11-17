@@ -200,6 +200,49 @@ export interface StoryPartMarkers {
   status: PartMarkerStatus;
 }
 
+/** A chapter with its marked span split out; every piece is token-free Markdown. */
+export interface PartSpan {
+  before: string;
+  span: string;
+  after: string;
+}
+
+/** Splits a chapter by its ready marker pair, or null when the pair is missing or broken. */
+export function partSpanOf(markdown: string): PartSpan | null {
+  const status = partMarkerStatus(markdown);
+  if (status.kind !== "ready") return null;
+  return {
+    // The tokens stand between blank lines; trimming restores each side's block edges.
+    before: stripPartTokens(markdown.slice(0, status.start)).trim(),
+    span: stripPartTokens(markdown.slice(status.start + PART_START_TOKEN.length, status.end)).trim(),
+    after: stripPartTokens(markdown.slice(status.end + PART_END_TOKEN.length)).trim(),
+  };
+}
+
+/** Roughly how much surrounding chapter text a rewrite preview shows: about one page each side. */
+// ponytail: "about one page" is a fixed character budget, not a measured page of the reader's own pagination; a
+// real page depends on font, theme and window size. Upgrade: measure the preview's page capacity and excerpt that.
+export const PART_CONTEXT_CHARS = 2_000;
+
+/**
+ * An excerpt of `text` from the `start` (leading) or `end` (trailing) side, cut on a blank line near the limit so the
+ * preview context never starts or ends mid-paragraph. A cut is marked with an ellipsis.
+ */
+export function partContextExcerpt(text: string, limit: number, side: "start" | "end"): string {
+  if (limit <= 0) return "";
+  if (text.length <= limit) return text;
+  if (side === "start") {
+    const head = text.slice(0, limit + 1);
+    const cut = head.lastIndexOf("\n\n");
+    return cut >= Math.floor(limit / 2) ? `${head.slice(0, cut).trimEnd()}…` : `${text.slice(0, limit - 1).trimEnd()}…`;
+  }
+  const tail = text.slice(text.length - limit - 1);
+  const cut = tail.indexOf("\n\n");
+  return cut >= 0 && cut <= Math.ceil(limit / 2)
+    ? `…${tail.slice(cut + 2).trimStart()}`
+    : `…${text.slice(text.length - limit + 1).trimStart()}`;
+}
+
 /**
  * Reads the story's single pair across its chapters. Tokens in more than one chapter cannot be one pair: the first
  * token's chapter keeps its surviving marker, and the split is reported for re-placement.

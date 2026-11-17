@@ -271,6 +271,7 @@ export const StoryDocument = forwardRef<StoryReaderHandle, StoryReaderProps>(fun
       data-editable={editable ? "true" : "false"}
       data-sw-part-mode={props.partModeActive ? "true" : undefined}
       data-sw-part-invalid={props.partInvalid ? "true" : undefined}
+      data-sw-part-preview={props.partPreviewActive ? "true" : undefined}
       role="region"
       aria-label={t("reader.region")}
       tabIndex={0}

@@ -65,6 +65,10 @@ export interface StoryReaderProps {
   partModeActive?: boolean;
   /** The pair is corrupt or split: the surviving markers warn until cleared. */
   partInvalid?: boolean;
+  /** This reader is the Rewrite Part preview: the marked draft reads normal, the context around it gray. */
+  partPreviewActive?: boolean;
+  /** Added to each chapter's number (a preview shows one chapter with its real number). */
+  numberOffset?: number;
   /** A marker-mode click resolved to a block of a chapter, or to a placed pin. */
   onPartClick?(chapterId: string, blockIndex: number, x: number, y: number): void;
   onPartPinClick?(chapterId: string, role: PartMarkerRole): void;
@@ -134,10 +138,11 @@ function isTypingTarget(target: Element): boolean {
  * and the handler for edits in them. Without page counts (the Document theme) every block counts as one page.
  */
 export function useReaderBlocks(
-  props: Pick<StoryReaderProps, "chapters" | "ghostChapterId" | "onChapterChange" | "onStartChapter">,
+  props: Pick<StoryReaderProps, "chapters" | "ghostChapterId" | "numberOffset" | "onChapterChange" | "onStartChapter">,
   pageCounts: Record<string, number>,
 ) {
   const { chapters, ghostChapterId } = props;
+  const numberOffset = props.numberOffset ?? 0;
   const latest = useRef(props);
   useLayoutEffect(() => {
     latest.current = props;
@@ -158,7 +163,7 @@ export function useReaderBlocks(
       push({
         key: chapter.id,
         kind: "chapter",
-        number: index + 1,
+        number: index + 1 + numberOffset,
         markdown: chapter.text,
         title: chapterTitle(chapter.text),
       }),
@@ -167,7 +172,13 @@ export function useReaderBlocks(
     // notifies later): keep that block, with the same key, so the author's caret survives.
     const started = pendingStart?.id;
     if (pendingStart && started !== ghostChapterId && !chapters.some((chapter) => chapter.id === started)) {
-      push({ key: pendingStart.id, kind: "chapter", number: list.length, markdown: pendingStart.markdown, title: "" });
+      push({
+        key: pendingStart.id,
+        kind: "chapter",
+        number: list.length + numberOffset,
+        markdown: pendingStart.markdown,
+        title: "",
+      });
     }
     // Right after the author starts the ghost page, its id is already a chapter; the shell sends a new ghost id.
     if (!chapters.some((chapter) => chapter.id === ghostChapterId)) {
@@ -1052,6 +1063,7 @@ export const StoryReader = forwardRef<StoryReaderHandle, StoryReaderProps>(funct
       data-editable={editable ? "true" : "false"}
       data-sw-part-mode={props.partModeActive ? "true" : undefined}
       data-sw-part-invalid={props.partInvalid ? "true" : undefined}
+      data-sw-part-preview={props.partPreviewActive ? "true" : undefined}
       role="region"
       aria-label={t("reader.region")}
       style={rootStyle}
