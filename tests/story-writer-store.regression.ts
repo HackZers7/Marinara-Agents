@@ -435,3 +435,158 @@ test("a chapter left unlisted by a failed story update is adopted by the retry, 
   await assert.rejects(store.createChapter(other.story.id, { id: chapterId, text: "Theft" }), { statusCode: 409 });
   assert.equal((await store.getStory(story.id)).chapters[0]?.text, "Second try, longer");
 });
+
+test("part history: confirm appends an applied entry with the span's before and after", async () => {
+  const { store } = setup();
+  const { story } = await store.createStory({ title: "History" });
+  const chapterId = "chapter-part-0001";
+  await store.createChapter(story.id, { id: chapterId, text: "Around the span." });
+  assert.deepEqual(await store.listPartHistory(story.id, chapterId), []);
+
+  const applied = await store.appendPartHistoryEntry(story.id, chapterId, {
+    textBefore: "The flat scene.",
+    textAfter: "The tense scene, hand-edited.",
+    applied: true,
+  });
+  assert.equal(applied.length, 1);
+  assert.equal(applied[0].textBefore, "The flat scene.");
+  assert.equal(applied[0].textAfter, "The tense scene, hand-edited.");
+  assert.equal(applied[0].applied, true);
+  assert.equal(applied[0].updatedAt, applied[0].createdAt, "the server stamps the entry's time");
+  assert.ok(applied[0].createdAt);
+
+  // A second confirm keeps every earlier entry: history only grows.
+  const again = await store.appendPartHistoryEntry(story.id, chapterId, {
+    textBefore: "The tense scene, hand-edited.",
+    textAfter: "The final scene.",
+    applied: true,
+  });
+  assert.equal(again.length, 2);
+  assert.deepEqual(await store.listPartHistory(story.id, chapterId), again);
+
+  await assert.rejects(store.appendPartHistoryEntry(story.id, chapterId, "not an entry"), { statusCode: 400 });
+  await assert.rejects(store.appendPartHistoryEntry(story.id, "Not An Id", { textBefore: "a" }), { statusCode: 400 });
+  await assert.rejects(store.listPartHistory(story.id, randomUUID()), { statusCode: 404 });
+  await assert.rejects(store.listPartHistory(randomUUID(), chapterId), { statusCode: 404 });
+});
+
+test("part history: an unapplied cancel-with-edits entry changes nothing and stays in the list", async () => {
+  const { store, row } = setup();
+  const { story } = await store.createStory();
+  const chapterId = "chapter-unapplied-1";
+  await store.createChapter(story.id, { id: chapterId, text: "Original span." });
+
+  const saved = await store.appendPartHistoryEntry(story.id, chapterId, {
+    textBefore: "Original span.",
+    textAfter: "A polished draft.",
+    applied: false,
+  });
+  assert.equal(saved.length, 1);
+  assert.equal(saved[0].applied, false);
+  // The chapter text and its document are untouched by the append.
+  assert.equal(row(chapterDocumentId(chapterId))!.revision, 1);
+
+  const mixed = await store.appendPartHistoryEntry(story.id, chapterId, {
+    textBefore: "Original span.",
+    textAfter: "An applied follow-up.",
+    applied: true,
+  });
+  assert.deepEqual(
+    mixed.map((entry) => [entry.applied, entry.textAfter]),
+    [
+      [false, "A polished draft."],
+      [true, "An applied follow-up."],
+    ],
+  );
+});
+
+test("part history: restoring appends a new entry and never truncates", async () => {
+  const { store } = setup();
+  const { story } = await store.createStory();
+  const chapterId = "chapter-restore-01";
+  await store.createChapter(story.id, { id: chapterId, text: "V1." });
+  await store.appendPartHistoryEntry(story.id, chapterId, { textBefore: "V0.", textAfter: "V1.", applied: true });
+  await store.appendPartHistoryEntry(story.id, chapterId, { textBefore: "V1.", textAfter: "V2.", applied: true });
+
+  // A restore goes through the same append: the restored text becomes a new applied entry.
+  const restored = await store.appendPartHistoryEntry(story.id, chapterId, {
+    textBefore: "V2.",
+    textAfter: "V1.",
+    applied: true,
+  });
+  assert.equal(restored.length, 3, "nothing before it was removed");
+  assert.deepEqual(
+    restored.map((entry) => entry.textAfter),
+    ["V1.", "V2.", "V1."],
+  );
+});
+
+test("part history: deleting the chapter removes its history; a story delete removes every chapter's", async () => {
+  const { store } = setup({ transactions: true });
+  const { story } = await store.createStory({ title: "Cleanup" });
+  const chapterId = "chapter-clean-0001";
+  const otherId = "chapter-clean-0002";
+  await store.createChapter(story.id, { id: chapterId, text: "One." });
+  await store.createChapter(story.id, { id: otherId, text: "Two." });
+  await store.appendPartHistoryEntry(story.id, chapterId, { textBefore: "a", textAfter: "b", applied: true });
+  await store.appendPartHistoryEntry(story.id, otherId, { textBefore: "c", textAfter: "d", applied: false });
+
+  await store.deleteChapter(story.id, chapterId);
+  await assert.rejects(store.listPartHistory(story.id, chapterId), { statusCode: 404 });
+  assert.equal((await store.listPartHistory(story.id, otherId)).length, 1, "another chapter keeps its own");
+
+  // A failed delete (unknown chapter) leaves the history alone.
+  await assert.rejects(store.deleteChapter(story.id, randomUUID()), { statusCode: 404 });
+
+  await store.deleteStory(story.id);
+  await assert.rejects(store.listPartHistory(story.id, otherId), { statusCode: 404 });
+});
+
+test("part history: clearPartHistory empties the list for a fresh whole-chapter rewrite, keep-the-rest intact", async () => {
+  const { store } = setup();
+  const { story } = await store.createStory();
+  const chapterId = "chapter-clear-0001";
+  await store.createChapter(story.id, { id: chapterId, text: "Text." });
+  await store.appendPartHistoryEntry(story.id, chapterId, { textBefore: "a", textAfter: "b", applied: true });
+
+  assert.deepEqual(await store.clearPartHistory(story.id, chapterId), []);
+  assert.deepEqual(await store.listPartHistory(story.id, chapterId), []);
+  await assert.rejects(store.clearPartHistory(story.id, randomUUID()), { statusCode: 404 });
+
+  // Clearing again (a chapter that never had history) stays a no-op.
+  assert.deepEqual(await store.clearPartHistory(story.id, chapterId), []);
+});
+
+test("part history: appends to one chapter survive a revision conflict and restart as one document", async () => {
+  const memory = memoryPersistence({ transactions: true });
+  let tick = 0;
+  const now = () => new Date(Date.UTC(2026, 0, 1, 0, 0, tick++)).toISOString();
+  const store = createStoryStore(memory.persistence, { now });
+  const { story } = await store.createStory();
+  const chapterId = "chapter-raced-0001";
+  await store.createChapter(story.id, { id: chapterId, text: "Span." });
+
+  const historyId = partHistoryDocumentIdFor(chapterId);
+  await store.appendPartHistoryEntry(story.id, chapterId, { textBefore: "seed", textAfter: "seed", applied: true });
+  memory.interfere(historyId, (data) => ({
+    ...data,
+    entries: [
+      ...data.entries,
+      { textBefore: "x", textAfter: "y", applied: true, createdAt: "2026-01-01T00:00:00.000Z" },
+    ],
+  }));
+  const saved = await store.appendPartHistoryEntry(story.id, chapterId, {
+    textBefore: "a",
+    textAfter: "b",
+    applied: true,
+  });
+  assert.equal(saved.length, 3, "another writer's entry is kept and ours lands after it");
+
+  // The history is one server document, so a restart (a fresh store over the same documents) reads it back.
+  const reopened = createStoryStore(memory.persistence, { now });
+  assert.equal((await reopened.listPartHistory(story.id, chapterId)).length, 3);
+});
+
+function partHistoryDocumentIdFor(chapterId: string): string {
+  return `story-writer:part-history:${chapterId}`;
+}

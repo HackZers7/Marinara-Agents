@@ -19,7 +19,13 @@ import { Loader2, RefreshCw } from "lucide-react";
 import { host } from "marinara:host";
 import { resolveDefaultConnectionId, useStoryConnections } from "../../hooks/use-engine-resources";
 import { useStoryGeneration } from "../../hooks/use-story-generation";
-import { storyWriterKeys, usePreferences, useStoryDocument, useStoryList } from "../../hooks/use-story-writer";
+import {
+  storyWriterKeys,
+  usePartHistory,
+  usePreferences,
+  useStoryDocument,
+  useStoryList,
+} from "../../hooks/use-story-writer";
 import { STORY_WRITER_ASSETS, storyWriterAssetUrl, type StoryWriterAsset } from "../../lib/story-writer/assets";
 import { downloadTextFile, storyFileName, storyToMarkdown, storyToPlainText } from "../../lib/story-writer/export";
 import { countWords, storyDisplayTitle, type StoryChapter, type StorySummary } from "../../lib/story-writer/model";
@@ -28,6 +34,7 @@ import {
   findStoryPartMarkers,
   insertPartMarker,
   nextPartPlacement,
+  partSpanOf,
   removePartMarker,
   stripPartTokens,
   type PartMarkerRole,
@@ -35,6 +42,7 @@ import {
 import { storyThemeVariables, type ResolvedColorMode } from "../../lib/story-writer/styles-shell";
 import { generateClientId } from "../../lib/utils";
 import { ActionBar, QuickReplyBar, type FullscreenControl, type PartModeControl } from "./ActionBar";
+import { PartHistoryDialog } from "./PartHistoryDialog";
 import { PartModePanel } from "./PartModePanel";
 import { PartPreviewDialog } from "./PartPreviewDialog";
 import { PromptPeekDialog } from "./PromptPeek";
@@ -153,6 +161,7 @@ export function StoryWriterView({ capabilityProps }: { capabilityProps: Record<s
   const [partInstruction, setPartInstruction] = useState("");
   const [partIncludeOriginal, setPartIncludeOriginal] = useState(true);
   const [partPreviewDismissed, setPartPreviewDismissed] = useState(false);
+  const [partHistoryOpen, setPartHistoryOpen] = useState(false);
   const peekOpener = useRef<HTMLElement | null>(null);
   const dockRef = useRef<HTMLDivElement>(null);
   const [chapterBarHost, setChapterBarHost] = useState<HTMLDivElement | null>(null);
@@ -258,6 +267,8 @@ export function StoryWriterView({ capabilityProps }: { capabilityProps: Record<s
   // The story's single pair, re-read from the chapters whenever a save moves them; one pair per story.
   const partMarkers = useMemo(() => findStoryPartMarkers(chapters), [chapters]);
   const partInvalid = partMarkers.status.kind === "invalid";
+  // The pair's chapter owns the version history: it dies with the chapter (the store removes it on delete).
+  const partHistory = usePartHistory(storyId, partMarkers.chapterId);
 
   // A corrupt or split pair is detected on mode entry and on every chapter load, never silently.
   useEffect(() => {
@@ -267,12 +278,14 @@ export function StoryWriterView({ capabilityProps }: { capabilityProps: Record<s
 
   /** Applies a marker edit to a chapter through the normal save path, so markers persist like typed text. */
   const applyPartEdit = useCallback(
-    (chapterId: string, edit: (markdown: string) => string | null) => {
+    (chapterId: string, edit: (markdown: string) => string | null): boolean => {
       const chapter = chapters.find((item) => item.id === chapterId);
-      if (!chapter) return;
+      if (!chapter) return false;
       const next = edit(chapter.text);
       // An edit that cannot land (a rewrite whose pair was edited away) leaves the chapter alone.
-      if (next !== null && next !== chapter.text) onChapterChange(chapterId, next);
+      if (next === null || next === chapter.text) return false;
+      onChapterChange(chapterId, next);
+      return true;
     },
     [chapters, onChapterChange],
   );
@@ -339,30 +352,69 @@ export function StoryWriterView({ capabilityProps }: { capabilityProps: Record<s
   }, [partStreaming]);
   const showPartPreview = !!partPreview && (!partStreaming ? !partPreviewDismissed : true);
 
-  /** A confirmed rewrite: the whole span between the markers becomes the previewed draft, markers wrapping it. */
+  /**
+   * A confirmed rewrite: the whole span between the markers becomes the previewed draft, markers wrapping it, and the
+   * step lands in the chapter's version history as an applied entry — the hand-edited draft IS the after text.
+   */
   const applyPartPreview = useCallback(
     (draft: string, edited: boolean) => {
       const preview = generation.partPreview;
       if (!preview) return;
+      const chapter = chapters.find((item) => item.id === preview.chapterId);
+      const before = chapter ? (partSpanOf(chapter.text)?.span ?? "") : "";
       applyPartEdit(preview.chapterId, (markdown) => applyPartRewrite(markdown, draft));
-      // The preview closes either way; the hook drops the applied draft (version history lands in ticket 04).
+      void partHistory.append({ textBefore: before, textAfter: draft, applied: true });
+      // The preview closes either way; the applied draft now lives on in the history too.
       toast.success(t("part.applied"));
       if (edited) generation.discardPartPreview();
       setPartPreviewDismissed(true);
     },
-    [generation, applyPartEdit, t],
+    [generation, applyPartEdit, partHistory, chapters, t],
   );
 
   /**
-   * Cancel: without hand edits the preview just closes; with them the draft is discarded too (interim until ticket 04
-   * turns a hand-edited cancel into an unapplied version). discardPartPreview is the single drop point for that.
+   * Cancel: without hand edits the preview just closes; with them the draft is saved into the chapter's version
+   * history as an unapplied entry (the chapter itself changes nothing) instead of being lost.
    */
   const cancelPartPreview = useCallback(
     (edited: boolean) => {
-      if (edited) generation.discardPartPreview();
+      if (edited) {
+        const preview = generation.partPreview;
+        const chapter = preview ? chapters.find((item) => item.id === preview.chapterId) : null;
+        const before = chapter ? (partSpanOf(chapter.text)?.span ?? "") : "";
+        void partHistory.append({ textBefore: before, textAfter: preview?.draft ?? "", applied: false });
+        generation.discardPartPreview();
+      }
       setPartPreviewDismissed(true);
     },
-    [generation],
+    [generation, partHistory, chapters],
+  );
+
+  /**
+   * A restore from history: the entry's text is applied exactly like a confirmed rewrite — the span between the
+   * markers becomes it, the markers wrap the result — and the step is recorded as a NEW applied entry. Restores never
+   * delete or truncate anything.
+   */
+  const restorePartHistory = useCallback(
+    (entryIndex: number) => {
+      const entry = partHistory.entries[entryIndex];
+      const chapterId = partMarkers.chapterId;
+      if (!entry || !chapterId || partMarkers.status.kind !== "ready") {
+        toast.error(t("part.history.restorePairMissing"));
+        return;
+      }
+      const chapter = chapters.find((item) => item.id === chapterId);
+      const before = chapter ? (partSpanOf(chapter.text)?.span ?? "") : "";
+      const changed = applyPartEdit(chapterId, (markdown) => applyPartRewrite(markdown, entry.textAfter));
+      if (!changed) {
+        toast.error(t("part.history.restorePairMissing"));
+        return;
+      }
+      void partHistory.append({ textBefore: before, textAfter: entry.textAfter, applied: true });
+      toast.success(t("part.history.restored"));
+      setPartHistoryOpen(false);
+    },
+    [partHistory, partMarkers, applyPartEdit, chapters, t],
   );
 
   // Leaving the mode does not drop a finished preview: its draft stays in the hook until applied or cancelled.
@@ -474,7 +526,10 @@ export function StoryWriterView({ capabilityProps }: { capabilityProps: Record<s
       confirmLabel: t("actions.rewriteConfirm"),
       tone: "destructive",
     });
-    if (confirmed) void generation.write("rewrite");
+    if (!confirmed) return;
+    // A whole-chapter rewrite destroys the text the span history refers to: its markers and history go with it.
+    if (lastChapter) void partHistory.clear();
+    void generation.write("rewrite");
   };
   const deleteChapter = async (chapterId: string) => {
     const number = chapters.findIndex((chapter) => chapter.id === chapterId) + 1;
@@ -546,7 +601,7 @@ export function StoryWriterView({ capabilityProps }: { capabilityProps: Record<s
       style={themeStyle}
       onKeyDown={onKeyDown}
     >
-      <div className="sw-frame" inert={peekOpen}>
+      <div className="sw-frame" inert={peekOpen || partHistoryOpen}>
         <div className="sw-stage" />
         <div className="sw-reader-slot">
           {data && settings && partMode ? (
@@ -556,10 +611,12 @@ export function StoryWriterView({ capabilityProps }: { capabilityProps: Record<s
               canGenerate={generation.canWrite}
               instruction={partInstruction}
               includeOriginal={partIncludeOriginal}
+              historyCount={partHistory.entries.length}
               onInstructionChange={setPartInstruction}
               onIncludeOriginalChange={setPartIncludeOriginal}
               onGenerate={startPartGeneration}
               onReset={resetPartMarkers}
+              onOpenHistory={() => setPartHistoryOpen(true)}
             />
           ) : null}
           {data && settings ? (
@@ -686,6 +743,15 @@ export function StoryWriterView({ capabilityProps }: { capabilityProps: Record<s
           onStop={generation.stop}
           onApply={applyPartPreview}
           onClose={() => cancelPartPreview(false)}
+        />
+      ) : null}
+      {data && settings && partHistoryOpen && partMarkers.chapterId ? (
+        <PartHistoryDialog
+          entries={partHistory.entries}
+          isLoading={partHistory.isLoading}
+          chapterNumber={chapters.findIndex((chapter) => chapter.id === partMarkers.chapterId) + 1}
+          onRestore={restorePartHistory}
+          onClose={() => setPartHistoryOpen(false)}
         />
       ) : null}
     </div>

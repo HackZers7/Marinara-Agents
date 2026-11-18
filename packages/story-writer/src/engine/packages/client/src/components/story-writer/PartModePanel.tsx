@@ -6,7 +6,7 @@
 // leaving and re-entering the mode.
 import { useId } from "react";
 import { useTranslation } from "react-i18next";
-import { Eraser, Sparkles } from "lucide-react";
+import { Eraser, History, Sparkles } from "lucide-react";
 
 export interface PartModePanelProps {
   /** Both markers are valid and placed, so generation is meaningful. */
@@ -16,10 +16,13 @@ export interface PartModePanelProps {
   canGenerate: boolean;
   instruction: string;
   includeOriginal: boolean;
+  /** Entries recorded for the pair's chapter so far, so the entry point can say how many wait inside. */
+  historyCount: number;
   onInstructionChange(value: string): void;
   onIncludeOriginalChange(value: boolean): void;
   onGenerate(): void;
   onReset(): void;
+  onOpenHistory(): void;
 }
 
 /**
@@ -86,6 +89,12 @@ export function PartModePanel(props: PartModePanelProps) {
           {t("part.reset")}
         </button>
       </div>
+      <button type="button" className="sw-button" onClick={props.onOpenHistory}>
+        <History size={15} aria-hidden="true" />
+        {props.historyCount > 0
+          ? t("part.history.openWithCount", { count: props.historyCount })
+          : t("part.history.open")}
+      </button>
     </aside>
   );
 }
