@@ -4,13 +4,13 @@
 
 **Blocked by:** 03 — history entries are written from the confirm and cancel paths that apply the rewrite.
 
-**Status:** ready-for-agent
+**Status:** done (commit 031efd0de, merged 2eed5bced; verified 2026-11-18 — criteria PASS, 89/89 story-writer regressions green)
 
-- [ ] Version history persists server-side and survives app restarts.
-- [ ] Confirm appends an applied entry with the before/after span text; preview hand edits are part of that same entry.
-- [ ] Cancelling the preview with hand edits appends an unapplied entry and changes nothing in the chapter text; cancelling without edits closes silently.
-- [ ] The history view is reachable from the mode panel and previews each entry.
-- [ ] Restore on any entry (applied or unapplied) applies its text as a new appended entry; history is never truncated or deleted by restores.
-- [ ] Deleting a chapter removes its markers and its version history.
-- [ ] The existing destructive Rewrite chapter clears the chapter's markers and version history.
-- [ ] Store regression tests cover the full lifecycle: append on confirm, append on cancel-with-edits, restore-appends, and cleanup on chapter deletion / whole-chapter rewrite.
+- [x] Version history persists server-side and survives app restarts.
+- [x] Confirm appends an applied entry with the before/after span text; preview hand edits are part of that same entry.
+- [x] Cancelling the preview with hand edits appends an unapplied entry and changes nothing in the chapter text; cancelling without edits closes silently.
+- [x] The history view is reachable from the mode panel and previews each entry.
+- [x] Restore on any entry (applied or unapplied) applies its text as a new appended entry; history is never truncated or deleted by restores.
+- [x] Deleting a chapter removes its markers and its version history.
+- [x] The existing destructive Rewrite chapter clears the chapter's markers and version history.
+- [x] Store regression tests cover the full lifecycle: append on confirm, append on cancel-with-edits, restore-appends, and cleanup on chapter deletion / whole-chapter rewrite.
