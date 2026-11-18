@@ -213,6 +213,30 @@ test("exports print the title once and each chapter under its own heading", () =
   assert.equal(storyFileName("  ", "txt"), "story.txt");
 });
 
+test("exports never carry Rewrite Part marker tokens out of the story", () => {
+  const marked = {
+    story: {
+      id: "story-1",
+      settings: { ...defaultStorySettings(), title: "" },
+      chapterIds: [],
+      wordCount: 0,
+      chapterCount: 1,
+      createdAt: "",
+      updatedAt: "",
+    },
+    chapters: [
+      exportChapter(
+        1,
+        "# The Storm\n\nBefore.\n\n<!--sw:part-start-->\n\nThe chosen span.\n\n<!--sw:part-end-->\n\nAfter.",
+      ),
+    ],
+  };
+  const markdown = storyToMarkdown(marked, "Untitled story");
+  assert.equal(markdown, "# Untitled story\n\n## Chapter 1: The Storm\n\nBefore.\n\nThe chosen span.\n\nAfter.\n");
+  assert.ok(!markdown.includes("sw:part"));
+  assert.ok(!storyToPlainText(marked, "Untitled story").includes("sw:part"));
+});
+
 test("censored words stay literal, and deep quote nesting cannot overflow the stack", () => {
   assert.equal(markdownToHtml('"What the f***?" she asked.'), "<p>&quot;What the f***?&quot; she asked.</p>");
   assert.equal(markdownToPlainText("F*** this."), "F*** this.");

@@ -11,6 +11,8 @@ import { Eraser, Sparkles } from "lucide-react";
 export interface PartModePanelProps {
   /** Both markers are valid and placed, so generation is meaningful. */
   markersReady: boolean;
+  /** Any marker exists (a lone or corrupt pair included), so reset has something to clear. */
+  markersPresent: boolean;
   canGenerate: boolean;
   instruction: string;
   includeOriginal: boolean;
@@ -76,7 +78,7 @@ export function PartModePanel(props: PartModePanelProps) {
         <button
           type="button"
           className="sw-button"
-          disabled={!props.markersReady}
+          disabled={!props.markersPresent}
           aria-label={t("part.reset")}
           onClick={props.onReset}
         >
