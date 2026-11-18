@@ -4,13 +4,13 @@
 
 **Blocked by:** None (can start immediately).
 
-**Status:** ready-for-agent
+**Status:** done (commit c701d31c7, merged 482bd84ed; re-verified 2026-11-18 — 8/8 criteria PASS; verification gaps fixed in 030cfcbcc)
 
-- [ ] A Rewrite Part control in the story action bar enters marker mode; existing actions are unchanged.
-- [ ] In marker mode, the first book click places the start marker and the second places the end marker; placements on different pages (reached via page-flip buttons) work.
-- [ ] Both markers can be placed only within a single chapter; a cross-chapter attempt shows clear feedback and places nothing.
-- [ ] Marker tokens embedded in the chapter Markdown are never rendered anywhere in the book view.
-- [ ] Markers persist when leaving and re-entering the mode and across app restarts.
-- [ ] Clicking a placed marker removes it and the next click re-places it; a reset control clears both markers.
-- [ ] An invalid pair (missing or corrupt token after manual editing) is detected on mode entry and chapter load, highlights the surviving marker, and prompts re-placement instead of failing silently.
-- [ ] Regression tests cover the marker token utilities (insert, locate, strip, invalid-pair detection) and render-time hiding of the tokens.
+- [x] A Rewrite Part control in the story action bar enters marker mode; existing actions are unchanged.
+- [x] In marker mode, the first book click places the start marker and the second places the end marker; placements on different pages (reached via page-flip buttons) work.
+- [x] Both markers can be placed only within a single chapter; a cross-chapter attempt shows clear feedback and places nothing.
+- [x] Marker tokens embedded in the chapter Markdown are never rendered anywhere in the book view.
+- [x] Markers persist when leaving and re-entering the mode and across app restarts.
+- [x] Clicking a placed marker removes it and the next click re-places it; a reset control clears both markers.
+- [x] An invalid pair (missing or corrupt token after manual editing) is detected on mode entry and chapter load, highlights the surviving marker, and prompts re-placement instead of failing silently.
+- [x] Regression tests cover the marker token utilities (insert, locate, strip, invalid-pair detection) and render-time hiding of the tokens.

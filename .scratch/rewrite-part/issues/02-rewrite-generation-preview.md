@@ -4,14 +4,14 @@
 
 **Blocked by:** 01 — marker mode must exist so a valid marker pair can gate generation.
 
-**Status:** ready-for-agent
+**Status:** done (commit 1fe6cf9c3, merged 9d90cd781; re-verified 2026-11-18 — 9/9 criteria PASS; verification gaps fixed in 030cfcbcc)
 
-- [ ] The mode side panel hosts the instruction field, the include-original toggle (default on), generate, and reset markers, visible together with the book.
-- [ ] Generate is disabled until both markers are valid and the instruction is non-empty.
-- [ ] The rewrite prompt includes the full existing story context and the chapter text before and after the marked span; the span text is included only when the toggle is on.
-- [ ] Turning the toggle off shows a brief risk note about length and factual drift.
-- [ ] No model-facing path (chapter generation, rewrite, summary, timeline) ever sends marker tokens, and tokens do not count toward text-length limits.
-- [ ] The result streams live into a paginated, book-format preview with running headers and flip controls; the book itself remains untouched.
-- [ ] The preview shows roughly one page of gray read-only context on each side of the streaming span.
-- [ ] The Stop control matches normal generation; an abort discards the draft with a notification and keeps the mode and markers active.
-- [ ] Prompt-builder regression tests cover context assembly, pre/post span inclusion, the include/exclude-original behavior, and token stripping on all paths.
+- [x] The mode side panel hosts the instruction field, the include-original toggle (default on), generate, and reset markers, visible together with the book.
+- [x] Generate is disabled until both markers are valid and the instruction is non-empty.
+- [x] The rewrite prompt includes the full existing story context and the chapter text before and after the marked span; the span text is included only when the toggle is on.
+- [x] Turning the toggle off shows a brief risk note about length and factual drift.
+- [x] No model-facing path (chapter generation, rewrite, summary, timeline) ever sends marker tokens, and tokens do not count toward text-length limits.
+- [x] The result streams live into a paginated, book-format preview with running headers and flip controls; the book itself remains untouched.
+- [x] The preview shows roughly one page of gray read-only context on each side of the streaming span.
+- [x] The Stop control matches normal generation; an abort discards the draft with a notification and keeps the mode and markers active.
+- [x] Prompt-builder regression tests cover context assembly, pre/post span inclusion, the include/exclude-original behavior, and token stripping on all paths.

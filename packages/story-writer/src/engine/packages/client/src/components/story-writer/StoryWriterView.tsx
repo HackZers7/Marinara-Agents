@@ -552,6 +552,7 @@ export function StoryWriterView({ capabilityProps }: { capabilityProps: Record<s
           {data && settings && partMode ? (
             <PartModePanel
               markersReady={partMarkers.status.kind === "ready"}
+              markersPresent={partMarkers.chapterId !== null}
               canGenerate={generation.canWrite}
               instruction={partInstruction}
               includeOriginal={partIncludeOriginal}
