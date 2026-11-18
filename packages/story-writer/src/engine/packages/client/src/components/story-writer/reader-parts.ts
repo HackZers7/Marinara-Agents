@@ -66,3 +66,36 @@ export function partPinRoleAt(target: Element | null, y?: number): "start" | "en
   }
   return hasStart ? "start" : hasEnd ? "end" : null;
 }
+
+/**
+ * Whether `node` sits inside the blocks a ready marker pair borders in its body — the DOM mirror of the CSS that
+ * tints everything outside the pair gray in the preview. The borders ride on the span's own first and last blocks
+ * (inclusive), so a block is in the span when it carries a border or sits between two that do. The preview offers
+ * those blocks as its only editable region; this predicate tells an edit of the draft apart from a strike at the
+ * read-only context around it. Node shapes are read structurally (no DOM globals), so tests can feed plain objects.
+ */
+export function partInSpanBlocks(node: Node | null): boolean {
+  // Duck-typed views of the nodes the walk below needs; the preview's own DOM always has them.
+  const isElement = (candidate: unknown): candidate is { hasAttribute(name: string): boolean } =>
+    !!candidate &&
+    typeof candidate === "object" &&
+    typeof (candidate as { hasAttribute?: unknown }).hasAttribute === "function";
+  const parentOf = (current: { parentNode: unknown }) =>
+    current.parentNode as { classList?: { contains(name: string): boolean }; childNodes?: Iterable<unknown> } | null;
+  if (!node) return false;
+  // Climb to the body's direct child that owns the node (the block the caret or selection end is in).
+  let block: { parentNode: unknown } = node;
+  while (block.parentNode && !parentOf(block)?.classList?.contains("sw-body")) block = block.parentNode as typeof block;
+  if (!isElement(block)) return false;
+  if (block.hasAttribute("data-sw-part-start") || block.hasAttribute("data-sw-part-end")) return true;
+  // Between the borders: a start-bordered sibling before it, and no end-bordered sibling before it. A sibling
+  // carrying both borders (a one-block span) opens and closes the span on itself.
+  let started = false;
+  for (const sibling of (parentOf(block)?.childNodes ?? []) as unknown[]) {
+    if (sibling === block) return started;
+    if (!isElement(sibling)) continue;
+    if (sibling.hasAttribute("data-sw-part-start")) started = !sibling.hasAttribute("data-sw-part-end");
+    else if (sibling.hasAttribute("data-sw-part-end")) started = false;
+  }
+  return false;
+}

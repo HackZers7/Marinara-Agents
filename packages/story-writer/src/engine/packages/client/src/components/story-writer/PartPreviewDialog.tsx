@@ -4,23 +4,23 @@
 // Composes the existing reader: one synthetic chapter whose text is the gray context before, the marker pair around
 // the streaming draft, and the gray context after. The renderer already hides the tokens, so the reader needs no
 // changes to present it; the dialog only adds its chrome, the Stop control and the Escape handling (PromptPeek's
-// pattern). The story itself is never touched while the preview is open.
-import { useEffect, useId, useRef, type KeyboardEvent } from "react";
+// pattern). While the run streams the whole reader is read-only; after it ends only the span between the tokens is
+// editable — the synthetic chapter is token-free outside the pair, and the serializer emits no token for text the
+// author types, so the gray context cannot change. Confirm and Cancel apply or drop the draft; the story itself is
+// never touched while the preview is open.
+import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { Square, X } from "lucide-react";
+import { Check, Square, X } from "lucide-react";
 import type { PartPreview } from "../../hooks/use-story-generation";
 import { useNumberFormat } from "./sidebar/fields";
-import type { StoryChapter, StoryTheme } from "../../lib/story-writer/model";
-import { PART_END_TOKEN, PART_START_TOKEN } from "../../lib/story-writer/part-markers";
+import { countWords, type StoryChapter, type StoryTheme } from "../../lib/story-writer/model";
+import { PART_END_TOKEN, PART_START_TOKEN, partSpanOf } from "../../lib/story-writer/part-markers";
+import { partInSpanBlocks } from "./reader-parts";
 import { StoryDocument } from "./StoryDocument";
 import { StoryReader } from "./StoryReader";
 
 // Underscore ids never collide with chapter ids; the ghost page is suppressed by reusing the chapter's id.
 const PREVIEW_KEY = "__part-preview";
-
-// ponytail: the preview reuses the reader as-is, so the streamed draft is the synthetic chapter's plain Markdown and
-// stays read-only (the whole reader is editable={false}); hand editing (ticket 03) will need the draft block exposed
-// as an editable region — the draft text is already isolated in PartPreview.draft for that upgrade.
 
 /** The synthetic preview chapter: gray context, the marker pair, the draft between them, gray context. */
 function previewChapter(preview: PartPreview): StoryChapter {
@@ -40,7 +40,7 @@ function previewChapter(preview: PartPreview): StoryChapter {
   };
 }
 
-export function PartPreviewDialog(props: {
+export interface PartPreviewDialogProps {
   preview: PartPreview;
   /** The run is still streaming: Stop is offered; closing means aborting. */
   streaming: boolean;
@@ -49,19 +49,58 @@ export function PartPreviewDialog(props: {
   storyTitle: string;
   storyDetails: string;
   onStop(): void;
+  /**
+   * Applies the (possibly hand-edited) draft to the chapter and closes the preview. The dialog hands over the draft's
+   * current Markdown and whether the author changed it after the stream ended.
+   */
+  onApply(draft: string, edited: boolean): void;
   onClose(): void;
-}) {
+}
+
+export function PartPreviewDialog(props: PartPreviewDialogProps) {
   const { t } = useTranslation();
   const { preview } = props;
   const titleId = useId();
   const stopRef = useRef<HTMLButtonElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
+  const applyRef = useRef<HTMLButtonElement>(null);
   const formatNumber = useNumberFormat();
-  const chapter = previewChapter(preview);
+  // The draft as the stream produced it: the reference a hand edit is measured against.
+  const [streamedDraft, setStreamedDraft] = useState(preview.draft);
+  // The draft the reader shows now: the stream moves it while it runs, the author's hand edits move it after.
+  const [draft, setDraft] = useState(preview.draft);
+  useEffect(() => {
+    setDraft(preview.draft);
+    setStreamedDraft(preview.draft);
+  }, [preview]);
+  const edited = !props.streaming && draft.trim() !== streamedDraft.trim();
+  const words = props.streaming ? preview.words : countWords(draft);
+  const chapter = previewChapter({ ...preview, draft });
 
   useEffect(() => {
-    (props.streaming ? stopRef : closeRef).current?.focus({ preventScroll: true });
+    (props.streaming ? stopRef : applyRef).current?.focus({ preventScroll: true });
   }, [props.streaming]);
+
+  const apply = () => {
+    props.onApply(draft, edited);
+  };
+
+  // The gray context is read-only by construction: an input or paste can only land in the span's own blocks, the ones
+  // the marker borders ride on. A strike anywhere else (a selection reaching past the pair) is cancelled on the native
+  // beforeinput event, which is the one that can truly prevent the browser's edit.
+  const stageRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const stage = stageRef.current;
+    if (!stage) return;
+    const guard = (event: Event) => {
+      const input = event as InputEvent;
+      const anchor =
+        input.getTargetRanges?.()[0]?.startContainer ?? (input.target instanceof Node ? input.target : null);
+      if (!partInSpanBlocks(anchor)) event.preventDefault();
+    };
+    stage.addEventListener("beforeinput", guard, true);
+    return () => stage.removeEventListener("beforeinput", guard, true);
+  }, []);
 
   const onKeyDown = (event: KeyboardEvent) => {
     if (event.defaultPrevented) return;
@@ -108,11 +147,9 @@ export function PartPreviewDialog(props: {
       >
         <header className="sw-part-preview-head">
           <h2 id={titleId}>{t("part.preview.title", { number: preview.chapterNumber })}</h2>
-          {props.streaming ? (
-            <span className="sw-part-preview-words" aria-hidden="true">
-              {t("actions.words", { count: preview.words, formatted: formatNumber(preview.words) })}
-            </span>
-          ) : null}
+          <span className="sw-part-preview-words" aria-hidden="true">
+            {t("actions.words", { count: words, formatted: formatNumber(words) })}
+          </span>
           {props.streaming ? (
             <button
               ref={stopRef}
@@ -125,19 +162,32 @@ export function PartPreviewDialog(props: {
               <Square size={16} fill="currentColor" aria-hidden="true" />
             </button>
           ) : (
-            <button
-              ref={closeRef}
-              type="button"
-              className="sw-icon-button"
-              aria-label={t("part.preview.close")}
-              title={t("part.preview.close")}
-              onClick={props.onClose}
-            >
-              <X size={18} aria-hidden="true" />
-            </button>
+            <>
+              <button
+                ref={applyRef}
+                type="button"
+                className="sw-button"
+                data-variant="primary"
+                aria-label={t("part.preview.applyLabel")}
+                onClick={apply}
+              >
+                <Check size={15} aria-hidden="true" />
+                {t("part.preview.apply")}
+              </button>
+              <button
+                ref={closeRef}
+                type="button"
+                className="sw-icon-button"
+                aria-label={t("part.preview.close")}
+                title={t("part.preview.close")}
+                onClick={props.onClose}
+              >
+                <X size={18} aria-hidden="true" />
+              </button>
+            </>
           )}
         </header>
-        <div className="sw-part-preview-stage">
+        <div ref={stageRef} className="sw-part-preview-stage">
           {(() => {
             // The reader the story itself uses: the paginated book/e-book, or the scrolling document.
             const shared = {
@@ -147,12 +197,18 @@ export function PartPreviewDialog(props: {
               chapters: [chapter],
               generatingChapterId: props.streaming ? PREVIEW_KEY : null,
               ghostChapterId: PREVIEW_KEY,
-              editable: false,
+              // After the stream ends the synthetic chapter turns editable: ChapterBlock keeps its bodies read-only
+              // while the (single) generation runs, so during the stream nothing can be typed anywhere.
+              editable: !props.streaming,
               mariImageUrl: "",
               chapterBarHost: null,
               numberOffset: preview.chapterNumber - 1,
               partPreviewActive: true,
-              onChapterChange: () => undefined,
+              // An edit serializes the whole synthetic chapter back to Markdown; the pair still splits it, and only
+              // the span between the tokens is the draft the author meant to touch.
+              onChapterChange: (_chapterId: string, markdown: string) => {
+                setDraft(partSpanOf(markdown)?.span ?? "");
+              },
               onStartChapter: () => undefined,
             };
             return props.theme === "document" ? (

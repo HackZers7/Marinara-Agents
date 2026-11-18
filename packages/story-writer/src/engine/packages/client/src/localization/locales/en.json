@@ -254,8 +254,11 @@
     "reset": "Reset markers",
     "generatePairMissing": "Place both part markers before generating a rewrite.",
     "generateAborted": "Rewrite stopped. The draft was discarded; your markers are still in place.",
+    "applied": "Rewrite applied. The markers now wrap the new text.",
     "preview": {
       "title": "Rewriting part of chapter {{number}}",
+      "apply": "Apply",
+      "applyLabel": "Apply the rewrite to the chapter",
       "close": "Close the preview"
     }
   },
