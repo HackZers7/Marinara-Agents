@@ -3,6 +3,7 @@
 // ──────────────────────────────────────────────
 import { storyDisplayTitle, type StoryWithChapters } from "./model";
 import { markdownToPlainText } from "./markdown";
+import { stripPartTokens } from "./part-markers";
 
 export interface StoryExportOptions {
   /** The localized chapter label; defaults to "Chapter N". */
@@ -21,7 +22,8 @@ function exportChapters(story: StoryWithChapters, options: StoryExportOptions): 
     if (!chapter.text.trim()) return [];
     const opening = /^\s*#{1,3}\s+(.+?)(?:\s+#+)?\s*(?:\n|$)/.exec(chapter.text);
     const title = opening?.[1]?.trim() ?? "";
-    const body = (opening ? chapter.text.slice(opening[0].length) : chapter.text).trim();
+    // Exports are reading copies: marker tokens are editor machinery and never leave the story.
+    const body = stripPartTokens(opening ? chapter.text.slice(opening[0].length) : chapter.text).trim();
     return [{ heading: title ? `${label(index + 1)}: ${title}` : label(index + 1), body }];
   });
 }
