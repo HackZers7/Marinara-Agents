@@ -159,6 +159,18 @@ export interface StoryWithChapters {
   chapters: StoryChapter[];
 }
 
+/**
+ * One recorded step of a chapter's Rewrite Part span: what the span was before, what it became after (a confirmed
+ * rewrite, hand edits included, or an abandoned draft), and whether it ever reached the chapter.
+ */
+export interface PartHistoryEntry {
+  textBefore: string;
+  textAfter: string;
+  applied: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // ── Server API (prefix /api/story-writer; the host api client takes paths without "/api") ──
 // GET    /story-writer/preferences                         → StoryWriterPreferences
 // PATCH  /story-writer/preferences       Partial<Prefs>    → StoryWriterPreferences
@@ -171,6 +183,9 @@ export interface StoryWithChapters {
 // POST   /story-writer/stories/:id/chapters  ChapterCreate → StoryWithChapters
 // PATCH  /story-writer/stories/:id/chapters/:chapterId  ChapterPatch → { story: StoryRecord; chapter: StoryChapter }
 // DELETE /story-writer/stories/:id/chapters/:chapterId     → StoryWithChapters
+// GET    /story-writer/stories/:id/chapters/:chapterId/part-history → PartHistoryEntry[]
+// POST   /story-writer/stories/:id/chapters/:chapterId/part-history { textBefore, textAfter, applied } → PartHistoryEntry[]
+// DELETE /story-writer/stories/:id/chapters/:chapterId/part-history → PartHistoryEntry[] (cleared by a whole rewrite)
 // Errors: { error: string } with 400 (invalid input), 404 (unknown story/chapter), 409 (chapter id taken).
 
 export interface ChapterCreate {
@@ -197,6 +212,11 @@ export function storyDocumentId(storyId: string): string {
 
 export function chapterDocumentId(chapterId: string): string {
   return `${STORY_WRITER_PACKAGE_ID}:chapter:${chapterId}`;
+}
+
+/** One Rewrite Part history document per chapter, so it dies with the chapter it belongs to. */
+export function partHistoryDocumentId(chapterId: string): string {
+  return `${STORY_WRITER_PACKAGE_ID}:part-history:${chapterId}`;
 }
 
 export const PREFERENCES_DOCUMENT_ID = `${STORY_WRITER_PACKAGE_ID}:preferences`;

@@ -260,6 +260,23 @@
       "apply": "Apply",
       "applyLabel": "Apply the rewrite to the chapter",
       "close": "Close the preview"
+    },
+    "history": {
+      "open": "Version history",
+      "openWithCount": "Version history ({{count}})",
+      "title": "Version history — chapter {{number}}",
+      "titleNoChapter": "Version history",
+      "close": "Close the version history",
+      "loading": "Loading the version history…",
+      "empty": "No versions yet. Confirmed rewrites and hand-edited drafts you cancel land here.",
+      "list": "Recorded versions",
+      "entryApplied": "Version {{number}} · applied",
+      "entryDraft": "Version {{number}} · unapplied draft",
+      "entryPreview": "Text this version would restore",
+      "restore": "Restore",
+      "restored": "Version restored as the current text and recorded as a new entry.",
+      "restorePairMissing": "Place both part markers before restoring a version.",
+      "newestFirst": "Newest first"
     }
   },
   "quickReplies": {
@@ -320,7 +337,9 @@
     "createChapter": "Could not start the chapter.",
     "deleteChapter": "Could not delete the chapter.",
     "export": "Could not export the story.",
-    "openConnection": "The connection editor could not be opened from here. Open Connections from the main menu."
+    "openConnection": "The connection editor could not be opened from here. Open Connections from the main menu.",
+    "loadHistory": "Could not load the version history.",
+    "saveHistory": "Could not save the version to the history."
   },
   "reader": {
     "region": "Story reader",
