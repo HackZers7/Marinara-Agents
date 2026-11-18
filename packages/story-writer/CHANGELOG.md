@@ -1,5 +1,12 @@
 # Story Writer release notes
 
+## 0.4.0 — 2026-11-18
+
+- Rewrite Part fixes one stretch of a chapter without regenerating the rest. Press the highlighter button beside Rewrite, click where the part begins and click again where it ends; the markers can sit pages apart, and clicking a placed marker removes it. Then describe what to change and press **Generate rewrite**.
+- The replacement streams into a preview beside your text, with about a page of gray, read-only context on each side. Edit it by hand before applying, or stop it and try again: nothing changes until you press **Apply**, and the chapter keeps its draft/complete state.
+- Every applied rewrite lands in a per-chapter **Version history** (opened from the mode panel), together with drafts you edited but cancelled. **Restore** any version; the restore is recorded as a new entry, so the history keeps every step.
+- The markers and the history survive restarts, stay inside one chapter, and are removed with the chapter or a whole-chapter rewrite.
+
 ## 0.3.0 — 2026-11-17
 
 - A third theme, **Document**: no pages, just your chapters one under another in a column you scroll, with a line between chapters. You can select text across what used to be a page break, and on a phone you read by scrolling. The chapter bar reads "Chapter 2 of 5", and its buttons move from chapter to chapter.
