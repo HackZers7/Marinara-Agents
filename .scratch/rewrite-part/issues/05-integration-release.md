@@ -6,8 +6,8 @@
 
 **Status:** ready-for-agent
 
-- [ ] A browser e2e covers the full user path: mode entry → marker placement across a page flip → generation on a stub connection → streaming preview with gray context → hand edit → confirm → chapter replaced with markers wrapped → restore from history.
-- [ ] The package is rebuilt from sources; generated bundles, artifacts, and catalog entries come from the builder, not hand edits.
-- [ ] `npm run check` passes on maintained sources.
-- [ ] Catalog lane, locale, catalog, and release-notes validation scripts pass.
-- [ ] A CHANGELOG entry for the new package version exists and the version is bumped per the repo's release-notes rules.
+- [x] A browser e2e covers the full user path: mode entry → marker placement across a page flip → generation on a stub connection → streaming preview with gray context → hand edit → confirm → chapter replaced with markers wrapped → restore from history.
+- [x] The package is rebuilt from sources; generated bundles, artifacts, and catalog entries come from the builder, not hand edits.
+- [x] `npm run check` passes on maintained sources.
+- [x] Catalog lane, locale, catalog, and release-notes validation scripts pass.
+- [x] A CHANGELOG entry for the new package version exists and the version is bumped per the repo's release-notes rules.
