@@ -225,6 +225,20 @@ export function partSpanOf(markdown: string): PartSpan | null {
 export const PART_CONTEXT_CHARS = 2_000;
 
 /**
+ * Applies a finished (possibly hand-edited) rewrite draft to the chapter: the whole marked span is replaced by
+ * `draft` — all-or-nothing — and the pair is recalculated to wrap the replacement, keeping the mode ready for
+ * another iteration. Null when the pair is missing or broken, so there is nothing to stitch into.
+ */
+export function applyPartRewrite(markdown: string, draft: string): string | null {
+  const span = partSpanOf(markdown);
+  if (!span) return null;
+  const text = stripPartTokens(draft).trim();
+  return [span.before, PART_START_TOKEN, text, PART_END_TOKEN, span.after]
+    .filter((part) => part || part === PART_START_TOKEN || part === PART_END_TOKEN)
+    .join("\n\n");
+}
+
+/**
  * An excerpt of `text` from the `start` (leading) or `end` (trailing) side, cut on a blank line near the limit so the
  * preview context never starts or ends mid-paragraph. A cut is marked with an ellipsis.
  */

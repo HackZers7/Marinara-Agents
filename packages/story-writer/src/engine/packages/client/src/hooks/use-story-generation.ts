@@ -90,6 +90,11 @@ export interface StoryGenerationApi {
    * story stays untouched: the draft is applied (or dropped) only after the run ends.
    */
   rewritePart(instruction: string, includeOriginal: boolean): Promise<void>;
+  /**
+   * Drops a finished preview's draft: after its text was applied to the chapter, or when the author cancels a draft
+   * they hand-edited. The single place a draft goes away outside a run, so version history (ticket 04) can take over.
+   */
+  discardPartPreview(): void;
   stop(): void;
   summarizeChapter(chapterId: string): Promise<void>;
   summarizeOlderChapters(): Promise<void>;
@@ -596,6 +601,8 @@ export function useStoryGeneration(args: {
     [operate],
   );
 
+  const discardPartPreview = useCallback(() => setPartPreview(null), []);
+
   // Outside operate(): a peek takes no run, sets no status and never touches a chapter.
   const peekPrompt = useCallback(
     async (signal: AbortSignal): Promise<PromptPeek | null> => {
@@ -687,6 +694,7 @@ export function useStoryGeneration(args: {
     peekPrompt,
     partPreview,
     rewritePart,
+    discardPartPreview,
     stop,
     summarizeChapter,
     summarizeOlderChapters,

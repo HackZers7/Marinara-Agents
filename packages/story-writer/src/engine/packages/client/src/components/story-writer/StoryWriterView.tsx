@@ -24,6 +24,7 @@ import { STORY_WRITER_ASSETS, storyWriterAssetUrl, type StoryWriterAsset } from 
 import { downloadTextFile, storyFileName, storyToMarkdown, storyToPlainText } from "../../lib/story-writer/export";
 import { countWords, storyDisplayTitle, type StoryChapter, type StorySummary } from "../../lib/story-writer/model";
 import {
+  applyPartRewrite,
   findStoryPartMarkers,
   insertPartMarker,
   nextPartPlacement,
@@ -266,11 +267,12 @@ export function StoryWriterView({ capabilityProps }: { capabilityProps: Record<s
 
   /** Applies a marker edit to a chapter through the normal save path, so markers persist like typed text. */
   const applyPartEdit = useCallback(
-    (chapterId: string, edit: (markdown: string) => string) => {
+    (chapterId: string, edit: (markdown: string) => string | null) => {
       const chapter = chapters.find((item) => item.id === chapterId);
       if (!chapter) return;
       const next = edit(chapter.text);
-      if (next !== chapter.text) onChapterChange(chapterId, next);
+      // An edit that cannot land (a rewrite whose pair was edited away) leaves the chapter alone.
+      if (next !== null && next !== chapter.text) onChapterChange(chapterId, next);
     },
     [chapters, onChapterChange],
   );
@@ -336,10 +338,34 @@ export function StoryWriterView({ capabilityProps }: { capabilityProps: Record<s
     if (partStreaming) setPartPreviewDismissed(false);
   }, [partStreaming]);
   const showPartPreview = !!partPreview && (!partStreaming ? !partPreviewDismissed : true);
-  const dismissPartPreview = useCallback(() => setPartPreviewDismissed(true), []);
 
-  // Leaving the mode also drops a finished preview's presence in the panel area; the draft stays in the hook until
-  // the next run replaces it (ticket 03 turns it into apply/edit).
+  /** A confirmed rewrite: the whole span between the markers becomes the previewed draft, markers wrapping it. */
+  const applyPartPreview = useCallback(
+    (draft: string, edited: boolean) => {
+      const preview = generation.partPreview;
+      if (!preview) return;
+      applyPartEdit(preview.chapterId, (markdown) => applyPartRewrite(markdown, draft));
+      // The preview closes either way; the hook drops the applied draft (version history lands in ticket 04).
+      toast.success(t("part.applied"));
+      if (edited) generation.discardPartPreview();
+      setPartPreviewDismissed(true);
+    },
+    [generation, applyPartEdit, t],
+  );
+
+  /**
+   * Cancel: without hand edits the preview just closes; with them the draft is discarded too (interim until ticket 04
+   * turns a hand-edited cancel into an unapplied version). discardPartPreview is the single drop point for that.
+   */
+  const cancelPartPreview = useCallback(
+    (edited: boolean) => {
+      if (edited) generation.discardPartPreview();
+      setPartPreviewDismissed(true);
+    },
+    [generation],
+  );
+
+  // Leaving the mode does not drop a finished preview: its draft stays in the hook until applied or cancelled.
   const startPartGeneration = useCallback(() => {
     setPartPreviewDismissed(false);
     void generation.rewritePart(partInstruction, partIncludeOriginal);
@@ -657,7 +683,8 @@ export function StoryWriterView({ capabilityProps }: { capabilityProps: Record<s
           storyTitle={storyDisplayTitle(settings, t("app.untitled"))}
           storyDetails={storyDetails}
           onStop={generation.stop}
-          onClose={dismissPartPreview}
+          onApply={applyPartPreview}
+          onClose={() => cancelPartPreview(false)}
         />
       ) : null}
     </div>
