@@ -4,12 +4,17 @@ import test from "node:test";
 import {
   CLIENT_ID_PATTERN,
   DEFAULT_SYSTEM_PROMPT,
+  LIMITS,
   PREFERENCES_DOCUMENT_ID,
   chapterDocumentId,
   countWords,
   defaultPreferences,
   storyDocumentId,
 } from "../packages/story-writer/src/engine/packages/client/src/lib/story-writer/model.ts";
+import {
+  PART_END_TOKEN,
+  PART_START_TOKEN,
+} from "../packages/story-writer/src/engine/packages/client/src/lib/story-writer/part-markers.ts";
 import { storyWriterRoutes } from "../packages/story-writer/src/engine/packages/server/src/services/story-writer/routes.ts";
 import {
   createStoryStore,
@@ -280,6 +285,25 @@ test("chapters keep the client id, refuse a taken id and keep the story's word c
   assert.equal(afterDelete.story.wordCount, 2);
   assert.equal(afterDelete.story.chapterCount, 1);
   assert.equal(row(chapterDocumentId(clientId)), undefined);
+});
+
+test("the chapter text slice grants the marker tokens' length back, so they never eat the budget", async () => {
+  const { store } = setup();
+  const { story } = await store.createStory();
+  const chapterId = "chapter-limit-0001";
+  await store.createChapter(story.id, { id: chapterId, text: "Seed." });
+
+  // A chapter whose real text fills the limit exactly: the two token lines ride along instead of pushing real
+  // characters out of the slice.
+  const real = `Real ${"x".repeat(LIMITS.chapterText - 5)}`;
+  const marked = [PART_START_TOKEN, real, PART_END_TOKEN].join("\n\n");
+  const saved = await store.patchChapter(story.id, chapterId, { text: marked });
+  assert.ok(saved.chapter.text.startsWith(`${PART_START_TOKEN}\n\n`), "the start token survives");
+  assert.ok(saved.chapter.text.includes(real), "every real character survives the slice");
+
+  // Token-free text slices byte for byte as before: exactly the chapter limit, nothing else changes.
+  const plain = "y".repeat(LIMITS.chapterText);
+  assert.equal((await store.patchChapter(story.id, chapterId, { text: `${plain}tail` })).chapter.text, plain);
 });
 
 test("parallel chapter writes to one story are all kept", async () => {
