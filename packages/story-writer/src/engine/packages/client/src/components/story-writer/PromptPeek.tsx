@@ -8,6 +8,7 @@ import { useTranslation } from "react-i18next";
 import { Loader2, X } from "lucide-react";
 import type { PromptPeek } from "../../hooks/use-story-generation";
 import { getApiErrorMessage } from "../../lib/api-client";
+import { keepTabInside } from "./dialog-keys";
 import { useNumberFormat } from "./sidebar/fields";
 
 /** Messages longer than a short paragraph (the system prompt, chapters) start folded; requests and notes stay open. */
@@ -52,20 +53,7 @@ export function PromptPeekDialog(props: { load(signal: AbortSignal): Promise<Pro
     // aria-modal: Tab and Shift+Tab wrap inside the dialog. Only Story Writer behind it is inert, so without this focus
     // would leave for the Engine's tabs, where Escape no longer reaches the dialog. Its stops change as the prompt loads.
     if (event.key === "Tab") {
-      const stops = Array.from(
-        (event.currentTarget as HTMLElement).querySelectorAll<HTMLElement>("button, summary, [href], [tabindex='0']"),
-      );
-      const active = document.activeElement;
-      if (!active || !stops.length) return;
-      const order = (stop: HTMLElement) => active.compareDocumentPosition(stop);
-      // Past the last stop (or before the first), go round; anywhere else the browser moves on as usual.
-      const more = event.shiftKey
-        ? stops.some((stop) => order(stop) & Node.DOCUMENT_POSITION_PRECEDING)
-        : stops.some((stop) => order(stop) & Node.DOCUMENT_POSITION_FOLLOWING);
-      if (!more) {
-        event.preventDefault();
-        (event.shiftKey ? stops[stops.length - 1] : stops[0])?.focus();
-      }
+      keepTabInside(event, event.currentTarget as HTMLElement, "button, summary, [href], [tabindex='0']");
       return;
     }
     if (event.key !== "Escape") return;

@@ -546,8 +546,11 @@ export interface PartHistoryApi {
   isLoading: boolean;
   /** Adds one entry (a confirm, a hand-edited cancel, a restore) and refreshes the list. */
   append(entry: { textBefore: string; textAfter: string; applied: boolean }): Promise<void>;
-  /** Empties the chapter's history (a whole-chapter rewrite starts it over). */
-  clear(): Promise<void>;
+  /**
+   * Empties a chapter's history (a whole-chapter rewrite starts it over): the chapter this hook is bound to by
+   * default, or any chapter of the story by id — the rewrite clears the rewritten chapter's, wherever the pair sits.
+   */
+  clear(targetChapterId?: string): Promise<void>;
 }
 
 /**
@@ -580,17 +583,21 @@ export function usePartHistory(storyId: string | null, chapterId: string | null)
     },
     [qc, storyId, chapterId],
   );
-  const clear = useCallback(async () => {
-    if (!storyId || !chapterId) return;
-    try {
-      qc.setQueryData(
-        storyWriterKeys.partHistory(storyId, chapterId),
-        await api.delete<PartHistoryEntry[]>(partHistoryPath(storyId, chapterId)),
-      );
-    } catch {
-      // The chapter is being cleared anyway; a stale history list behind it is harmless.
-    }
-  }, [qc, storyId, chapterId]);
+  const clear = useCallback(
+    async (targetChapterId: string | null = chapterId) => {
+      const target = targetChapterId ?? chapterId;
+      if (!storyId || !target) return;
+      try {
+        qc.setQueryData(
+          storyWriterKeys.partHistory(storyId, target),
+          await api.delete<PartHistoryEntry[]>(partHistoryPath(storyId, target)),
+        );
+      } catch {
+        // The chapter is being cleared anyway; a stale history list behind it is harmless.
+      }
+    },
+    [qc, storyId, chapterId],
+  );
   return { entries: query.data ?? [], isLoading: query.isLoading, append, clear };
 }
 

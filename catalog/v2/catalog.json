@@ -4680,13 +4680,13 @@
           },
           {
             "path": "server.mjs",
-            "sha256": "d1fbceb6dbd6fc7ab80778e74ad3c518a3e4451eee48ed65571331e129673089",
-            "bytes": 16197
+            "sha256": "ebc9536c99d51843da59ed12e30174c1460054f95030bb539c498688e5b95ced",
+            "bytes": 16260
           },
           {
             "path": "client.js",
-            "sha256": "750c6f36e73f50ba222b3f7b29b05e1416b56542717df40f67f86f85dcf0388e",
-            "bytes": 269988
+            "sha256": "c7ff9ca5263b88383132860c104b51b10afb97ba2487c670675e92957182453c",
+            "bytes": 269670
           },
           {
             "path": "story-writer-icon.png",
@@ -4725,8 +4725,8 @@
       "iconUrl": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artwork/agent-covers/story-writer.png",
       "artifact": {
         "url": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artifacts/story-writer-0.4.0.zip",
-        "sha256": "731fbb0b9c571b1faa98dcf077d0b9a2db001cadff1b2973c9944ca32f86d8f0",
-        "bytes": 676509
+        "sha256": "e9457e14f556e8555b6092780d2cf11859884d2255ae0dfd40101d21e541fb34",
+        "bytes": 676254
       },
       "documentationUrl": "https://github.com/Pasta-Devs/Marinara-Agents/blob/main/packages/story-writer/README.md"
     },

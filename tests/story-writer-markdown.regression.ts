@@ -305,6 +305,13 @@ test("plain text and word counts ignore part marker tokens", () => {
   assert.equal(countWords(markdown), countWords(stripTokens(markdown)));
 });
 
+test("a contraction with an ASCII apostrophe counts as one word, and CJK counting keeps its ranges", () => {
+  assert.equal(countWords("don't stop—can't stop"), 4, "an ASCII apostrophe joins a word");
+  assert.equal(countWords("don’t stop"), 2, "a typographic apostrophe joins a word too");
+  assert.equal(countWords("\uF900"), 1, "a U+F900 compatibility ideograph counts as a word");
+  assert.equal(countWords("\uE000"), 0, "a private-use character is not a word");
+});
+
 function stripTokens(markdown: string): string {
   return markdown
     .split("\n")

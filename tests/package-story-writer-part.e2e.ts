@@ -32,6 +32,9 @@ const REWRITE_2 = [
 // Typed into the preview by hand after the stream ends: the first draft paragraph keeps it at its end.
 const HAND_EDIT = " Hand-polished by the author.";
 const EDITED_REWRITE = [REWRITE.split("\n\n")[0]! + HAND_EDIT, ...REWRITE.split("\n\n").slice(1)].join("\n\n");
+// Typed into a later rewrite's preview, then left unapplied by closing the preview.
+const CANCEL_EDIT = " Saved aside by a cancelled preview.";
+const CANCELLED_REWRITE = [REWRITE_2.split("\n\n")[0]! + CANCEL_EDIT, ...REWRITE_2.split("\n\n").slice(1)].join("\n\n");
 
 /** Chapter text with both marker token lines removed and the gaps they leave closed. */
 function stripTokens(text: string): string {
@@ -161,12 +164,12 @@ test("Rewrite Part: markers across a page flip, streamed preview with gray conte
   };
   const chapterId = seeded.chapters[0]!.id;
 
-  const chapter = async () =>
+  const chapter = async (index = 0) =>
     (
       (await engineRequest(request, base, "GET", `/story-writer/stories/${storyId}`)) as {
         chapters: Array<{ text: string; status: string }>;
       }
-    ).chapters[0]!;
+    ).chapters[index]!;
   const history = async () =>
     (await engineRequest(
       request,
@@ -369,17 +372,20 @@ test("Rewrite Part: markers across a page flip, streamed preview with gray conte
 
   // Hand-edit the draft: the caret goes to the end of the draft's first block (the marker-bordered paragraph), and
   // typing appends there; the gray context stays untouched.
-  await previewBody.evaluate((body) => {
-    const start = [...body.children].find((block) => block.hasAttribute("data-sw-part-start")) as HTMLElement;
-    const target = start.querySelector("p") ?? start;
-    const range = document.createRange();
-    range.selectNodeContents(target);
-    range.collapse(false);
-    const selection = document.getSelection()!;
-    selection.removeAllRanges();
-    selection.addRange(range);
-    (target.closest(".sw-body") as HTMLElement).focus({ preventScroll: true });
-  });
+  const focusDraft = async () => {
+    await previewBody.evaluate((body) => {
+      const start = [...body.children].find((block) => block.hasAttribute("data-sw-part-start")) as HTMLElement;
+      const target = start.querySelector("p") ?? start;
+      const range = document.createRange();
+      range.selectNodeContents(target);
+      range.collapse(false);
+      const selection = document.getSelection()!;
+      selection.removeAllRanges();
+      selection.addRange(range);
+      (target.closest(".sw-body") as HTMLElement).focus({ preventScroll: true });
+    });
+  };
+  await focusDraft();
   await page.keyboard.type(HAND_EDIT);
   await expect(previewBody).toContainText("Hand-polished by the author.");
   await page.screenshot({ path: testInfo.outputPath("04-preview-edited.png") });
@@ -469,4 +475,108 @@ test("Rewrite Part: markers across a page flip, streamed preview with gray conte
       }),
     );
   expect(await history()).toHaveLength(3);
+
+  // Cancel with hand edits: closing the preview without Apply saves the edited draft as an unapplied version and
+  // leaves the chapter alone.
+  hold = new Promise<void>((resolve) => {
+    release = () => resolve();
+  });
+  await generate.click();
+  await expect.poll(() => generations.length).toBe(4);
+  await expect(preview).toBeVisible();
+  release();
+  hold = null;
+  await expect(previewBody).toContainText("Somewhere under the city the river remembered");
+  await expect(preview.getByRole("button", { name: "Apply the rewrite to the chapter" })).toBeVisible();
+  await expect(preview.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0);
+  expect(await previewBody.evaluate((body) => body.isContentEditable)).toBe(true);
+  await focusDraft();
+  await page.keyboard.type(CANCEL_EDIT);
+  await preview.getByRole("button", { name: "Close the preview" }).click();
+  await expect(preview).toHaveCount(0);
+  await expect
+    .poll(async () => chapter())
+    .toEqual(
+      expect.objectContaining({
+        status: "complete",
+        text: [original.before, START_TOKEN, EDITED_REWRITE, END_TOKEN, original.after].join("\n\n"),
+      }),
+    );
+  expect(await history()).toEqual([
+    ...Array.from({ length: 3 }, () => expect.objectContaining({ applied: true })),
+    expect.objectContaining({ textBefore: EDITED_REWRITE, textAfter: CANCELLED_REWRITE, applied: false }),
+  ]);
+
+  // Confirm with the pair edited away mid-preview: nothing lands, the history stays honest, and a warning tells the
+  // author the markers are gone. The start marker is removed the way an edit would lose it — the main chapter body
+  // serializes without its bordered block's marker attribute, since the preview owns the screen while it is open.
+  hold = new Promise<void>((resolve) => {
+    release = () => resolve();
+  });
+  await generate.click();
+  await expect.poll(() => generations.length).toBe(5);
+  await expect(preview).toBeVisible();
+  release();
+  hold = null;
+  await expect(preview.getByRole("button", { name: "Apply the rewrite to the chapter" })).toBeVisible();
+  await page.evaluate(() => {
+    const body = document.querySelector(".sw-reader-slot .sw-block--chapter .sw-body");
+    const start = body?.querySelector("[data-sw-part-start]");
+    if (body && start) {
+      start.removeAttribute("data-sw-part-start");
+      body.dispatchEvent(new InputEvent("input", { bubbles: true }));
+    }
+  });
+  await expect.poll(async () => (await chapter()).text.includes(START_TOKEN)).toBe(false);
+  await preview.getByRole("button", { name: "Apply the rewrite to the chapter" }).click();
+  await expect(preview).toHaveCount(0);
+  await expect(page.locator("[data-sonner-toast]").filter({ hasText: "markers are gone" })).toBeVisible();
+  await expect
+    .poll(async () => chapter())
+    .toEqual(
+      expect.objectContaining({
+        status: "complete",
+        text: [original.before, EDITED_REWRITE, END_TOKEN, original.after].join("\n\n"),
+      }),
+    );
+  expect(await history()).toHaveLength(4);
+
+  // The destructive whole-chapter rewrite clears the REWRITTEN chapter's history only: a marker pair in an earlier
+  // chapter keeps that chapter's versions. The second chapter is added behind the client's back, so a reload shows
+  // it to the view before the rewrite runs.
+  await engineRequest(request, base, "POST", `/story-writer/stories/${storyId}/chapters`, {
+    text: "A short second chapter, complete on arrival.",
+    status: "complete",
+  });
+  const seededAgain = (await engineRequest(request, base, "GET", `/story-writer/stories/${storyId}`)) as {
+    chapters: Array<{ id: string }>;
+  };
+  const secondId = seededAgain.chapters[1]!.id;
+  const secondHistory = async () =>
+    (await engineRequest(
+      request,
+      base,
+      "GET",
+      `/story-writer/stories/${storyId}/chapters/${secondId}/part-history`,
+    )) as Array<{ applied: boolean }>;
+  await page.reload();
+  // A reload opens on the Home tab; Story Writer comes back with the same story (the view remembers it).
+  await page.getByRole("tab", { name: "Open Story Writer" }).click();
+  await expect(root).toBeVisible();
+  await root.getByRole("button", { name: "Rewrite the last chapter" }).click();
+  await page.getByRole("button", { name: "Rewrite", exact: true }).click();
+  await expect.poll(async () => (await chapter(1)).text).toBe(REWRITE_2);
+  expect(await history()).toHaveLength(4);
+  expect(await secondHistory()).toEqual([]);
+
+  // An invalid pair is announced on chapter load too, before any mode is entered: the pair is corrupted through the
+  // API, a reload makes the view read it, and the warning toast greets the author outside part mode.
+  await engineRequest(request, base, "PATCH", `/story-writer/stories/${storyId}/chapters/${chapterId}`, {
+    text: [original.before, START_TOKEN, START_TOKEN, END_TOKEN, original.after].join("\n\n"),
+  });
+  await page.reload();
+  await page.getByRole("tab", { name: "Open Story Writer" }).click();
+  await expect(root).toBeVisible();
+  await expect(page.locator("[data-sonner-toast]").filter({ hasText: "part marker looks wrong" })).toBeVisible();
+  await expect(partButton).toHaveAttribute("aria-pressed", "false");
 });

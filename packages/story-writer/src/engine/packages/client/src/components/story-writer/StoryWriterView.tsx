@@ -270,9 +270,10 @@ export function StoryWriterView({ capabilityProps }: { capabilityProps: Record<s
   // The pair's chapter owns the version history: it dies with the chapter (the store removes it on delete).
   const partHistory = usePartHistory(storyId, partMarkers.chapterId);
 
-  // A corrupt or split pair is detected on mode entry and on every chapter load, never silently.
+  // A corrupt or split pair is detected on mode entry and on every chapter load, never silently — the toast fires
+  // whatever the mode is, and the deps keep it from repeating while the pair stays invalid.
   useEffect(() => {
-    if (!partMode || !partInvalid) return;
+    if (!partInvalid) return;
     toast.warning(t("part.invalidPair"));
   }, [partMode, partInvalid, t]);
 
@@ -354,7 +355,9 @@ export function StoryWriterView({ capabilityProps }: { capabilityProps: Record<s
 
   /**
    * A confirmed rewrite: the whole span between the markers becomes the previewed draft, markers wrapping it, and the
-   * step lands in the chapter's version history as an applied entry — the hand-edited draft IS the after text.
+   * step lands in the chapter's version history as an applied entry — the hand-edited draft IS the after text. When
+   * the pair was edited away before the confirm, nothing lands: the preview still closes, but the history records
+   * nothing and the author is told the markers are gone.
    */
   const applyPartPreview = useCallback(
     (draft: string, edited: boolean) => {
@@ -362,10 +365,14 @@ export function StoryWriterView({ capabilityProps }: { capabilityProps: Record<s
       if (!preview) return;
       const chapter = chapters.find((item) => item.id === preview.chapterId);
       const before = chapter ? (partSpanOf(chapter.text)?.span ?? "") : "";
-      applyPartEdit(preview.chapterId, (markdown) => applyPartRewrite(markdown, draft));
-      void partHistory.append({ textBefore: before, textAfter: draft, applied: true });
-      // The preview closes either way; the applied draft now lives on in the history too.
-      toast.success(t("part.applied"));
+      const changed = applyPartEdit(preview.chapterId, (markdown) => applyPartRewrite(markdown, draft));
+      if (changed) {
+        void partHistory.append({ textBefore: before, textAfter: draft, applied: true });
+        toast.success(t("part.applied"));
+      } else {
+        toast.warning(t("part.pairMissing"));
+      }
+      // The preview closes either way; the applied draft lives on in the history too.
       if (edited) generation.discardPartPreview();
       setPartPreviewDismissed(true);
     },
@@ -373,16 +380,17 @@ export function StoryWriterView({ capabilityProps }: { capabilityProps: Record<s
   );
 
   /**
-   * Cancel: without hand edits the preview just closes; with them the draft is saved into the chapter's version
-   * history as an unapplied entry (the chapter itself changes nothing) instead of being lost.
+   * Cancel: without hand edits the preview just closes; with them the EDITED draft is saved into the chapter's
+   * version history as an unapplied entry (the chapter itself changes nothing) instead of being lost. The dialog
+   * hands over its current draft, because the hook's preview only knows the streamed text.
    */
   const cancelPartPreview = useCallback(
-    (edited: boolean) => {
+    (draft: string, edited: boolean) => {
       if (edited) {
         const preview = generation.partPreview;
         const chapter = preview ? chapters.find((item) => item.id === preview.chapterId) : null;
         const before = chapter ? (partSpanOf(chapter.text)?.span ?? "") : "";
-        void partHistory.append({ textBefore: before, textAfter: preview?.draft ?? "", applied: false });
+        void partHistory.append({ textBefore: before, textAfter: draft, applied: false });
         generation.discardPartPreview();
       }
       setPartPreviewDismissed(true);
@@ -527,8 +535,10 @@ export function StoryWriterView({ capabilityProps }: { capabilityProps: Record<s
       tone: "destructive",
     });
     if (!confirmed) return;
-    // A whole-chapter rewrite destroys the text the span history refers to: its markers and history go with it.
-    if (lastChapter) void partHistory.clear();
+    // A whole-chapter rewrite destroys the LAST chapter's text: its markers and its span history go with it. The
+    // history cleared is the rewritten chapter's — the pair's own chapter may sit somewhere earlier and keeps its
+    // versions (the rewritten text carries no tokens, so the pair dies with the chapter when it lived there).
+    if (lastChapter) void partHistory.clear(lastChapter.id);
     void generation.write("rewrite");
   };
   const deleteChapter = async (chapterId: string) => {
@@ -742,7 +752,7 @@ export function StoryWriterView({ capabilityProps }: { capabilityProps: Record<s
           storyDetails={storyDetails}
           onStop={generation.stop}
           onApply={applyPartPreview}
-          onClose={() => cancelPartPreview(false)}
+          onClose={cancelPartPreview}
         />
       ) : null}
       {data && settings && partHistoryOpen && partMarkers.chapterId ? (

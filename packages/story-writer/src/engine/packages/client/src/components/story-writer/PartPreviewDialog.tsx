@@ -12,6 +12,7 @@ import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { Check, Square, X } from "lucide-react";
 import type { PartPreview } from "../../hooks/use-story-generation";
+import { keepTabInside } from "./dialog-keys";
 import { useNumberFormat } from "./sidebar/fields";
 import { countWords, type StoryChapter, type StoryTheme } from "../../lib/story-writer/model";
 import { PART_END_TOKEN, PART_START_TOKEN, partSpanOf } from "../../lib/story-writer/part-markers";
@@ -54,7 +55,11 @@ export interface PartPreviewDialogProps {
    * current Markdown and whether the author changed it after the stream ended.
    */
   onApply(draft: string, edited: boolean): void;
-  onClose(): void;
+  /**
+   * Closes the preview without applying. Like onApply, the dialog hands over the draft's current Markdown and
+   * whether the author changed it after the stream ended, so a cancelled edit can be saved instead of lost.
+   */
+  onClose(draft: string, edited: boolean): void;
 }
 
 export function PartPreviewDialog(props: PartPreviewDialogProps) {
@@ -106,19 +111,7 @@ export function PartPreviewDialog(props: PartPreviewDialogProps) {
     if (event.defaultPrevented) return;
     if (event.key === "Tab") {
       // aria-modal: keep Tab inside the dialog (PromptPeek's wrap-around).
-      const stops = Array.from(
-        (event.currentTarget as HTMLElement).querySelectorAll<HTMLElement>("button, [href], [tabindex='0']"),
-      );
-      const active = document.activeElement;
-      if (!active || !stops.length) return;
-      const order = (stop: HTMLElement) => active.compareDocumentPosition(stop);
-      const more = event.shiftKey
-        ? stops.some((stop) => order(stop) & Node.DOCUMENT_POSITION_PRECEDING)
-        : stops.some((stop) => order(stop) & Node.DOCUMENT_POSITION_FOLLOWING);
-      if (!more) {
-        event.preventDefault();
-        (event.shiftKey ? stops[stops.length - 1] : stops[0])?.focus();
-      }
+      keepTabInside(event, event.currentTarget as HTMLElement, "button, [href], [tabindex='0']");
       return;
     }
     if (event.key !== "Escape") return;
@@ -126,12 +119,12 @@ export function PartPreviewDialog(props: PartPreviewDialogProps) {
     event.stopPropagation();
     // While streaming, leaving the preview means stopping the run; after it ends, it just closes.
     if (props.streaming) props.onStop();
-    else props.onClose();
+    else props.onClose(draft, edited);
   };
 
   const leave = () => {
     // While streaming, a stray click on the scrim must not throw a running draft away; Stop is the only way out.
-    if (!props.streaming) props.onClose();
+    if (!props.streaming) props.onClose(draft, edited);
   };
 
   return (
@@ -180,7 +173,7 @@ export function PartPreviewDialog(props: PartPreviewDialogProps) {
                 className="sw-icon-button"
                 aria-label={t("part.preview.close")}
                 title={t("part.preview.close")}
-                onClick={props.onClose}
+                onClick={() => props.onClose(draft, edited)}
               >
                 <X size={18} aria-hidden="true" />
               </button>

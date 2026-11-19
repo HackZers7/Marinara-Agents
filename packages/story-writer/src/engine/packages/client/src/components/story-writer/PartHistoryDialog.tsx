@@ -8,6 +8,7 @@ import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { History, Loader2, RotateCcw, X } from "lucide-react";
 import { countWords, type PartHistoryEntry } from "../../lib/story-writer/model";
+import { keepTabInside } from "./dialog-keys";
 import { useNumberFormat } from "./sidebar/fields";
 
 function HistoryEntryRow(props: { entry: PartHistoryEntry; index: number; onRestore(index: number): void }) {
@@ -60,19 +61,7 @@ export function PartHistoryDialog(props: PartHistoryDialogProps) {
   const onKeyDown = (event: KeyboardEvent) => {
     if (event.defaultPrevented) return;
     if (event.key === "Tab") {
-      const stops = Array.from(
-        (event.currentTarget as HTMLElement).querySelectorAll<HTMLElement>("button, summary, [href], [tabindex='0']"),
-      );
-      const active = document.activeElement;
-      if (!active || !stops.length) return;
-      const order = (stop: HTMLElement) => active.compareDocumentPosition(stop);
-      const more = event.shiftKey
-        ? stops.some((stop) => order(stop) & Node.DOCUMENT_POSITION_PRECEDING)
-        : stops.some((stop) => order(stop) & Node.DOCUMENT_POSITION_FOLLOWING);
-      if (!more) {
-        event.preventDefault();
-        (event.shiftKey ? stops[stops.length - 1] : stops[0])?.focus();
-      }
+      keepTabInside(event, event.currentTarget as HTMLElement, "button, summary, [href], [tabindex='0']");
       return;
     }
     if (event.key !== "Escape") return;

@@ -404,7 +404,12 @@ export function normalizeStorySettings(patch: unknown, base: StorySettings = def
 export function normalizeChapterPatch(patch: unknown): ChapterPatch {
   const input = isRecord(patch) ? patch : {};
   const result: ChapterPatch = {};
-  if (typeof input.text === "string") result.text = input.text.slice(0, LIMITS.chapterText);
+  if (typeof input.text === "string") {
+    // Marker tokens never eat the chapter budget: the slice grants back the length their lines occupy, stripped
+    // exactly as countWords strips them. Token-free text slices byte for byte as before.
+    const stripped = input.text.replace(PART_TOKEN_LINE, " ");
+    result.text = input.text.slice(0, LIMITS.chapterText + (input.text.length - stripped.length));
+  }
   if (typeof input.summary === "string") result.summary = input.summary.slice(0, LIMITS.summary);
   if (input.status === "draft" || input.status === "complete") result.status = input.status;
   if (typeof input.request === "string") result.request = input.request.slice(0, LIMITS.longText);
@@ -413,17 +418,26 @@ export function normalizeChapterPatch(patch: unknown): ChapterPatch {
 
 // ── Text helpers shared by the client, the server and the prompt ──
 
+/**
+ * A Rewrite Part marker token standing on its own line, with the blank-line edges a strip may tidy. Every place that
+ * discounts the tokens — word counts, the chapter text limit — strips them through this one regex, so the accounting
+ * can never disagree. ponytail: the token shape is duplicated from part-markers.ts because model.ts must keep its
+ * zero imports — the server bundle takes it by relative path, and part-markers.ts sits in the client tree. Upgrade:
+ * move the token constants into a tiny shared module both bundles can take.
+ */
+const PART_TOKEN_LINE = /^\s*<!--sw:part-(?:start|end)-->\s*$/gm;
+
 /** Counts words the way a reader would: Markdown markers, scene breaks and Rewrite Part tokens do not count. */
 export function countWords(markdown: string): number {
   const plain = markdown
     .replace(/^\s{0,3}(?:#{1,6}\s+|>\s?)/gm, "")
     .replace(/^\s*(?:\*{3,}|-{3,}|_{3,})\s*$/gm, " ")
-    .replace(/^\s*<!--sw:part-(?:start|end)-->\s*$/gm, " ")
+    .replace(PART_TOKEN_LINE, " ")
     .replace(/[*_~=`]+/g, "");
-  const matches = plain.match(/[\p{L}\p{N}][\p{L}\p{N}’’-]*/gu);
+  const matches = plain.match(/[\p{L}\p{N}][\p{L}\p{N}'’-]*/gu);
   const words = matches?.length ?? 0;
   // CJK text has no spaces: count each ideograph/kana as a word.
-  const cjk = plain.match(/[぀-ヿ㐀-鿿豈-﫿]/g)?.length ?? 0;
+  const cjk = plain.match(/[぀-ヿ㐀-鿿豈-﫿]/g)?.length ?? 0;
   return cjk > words ? cjk : words;
 }
 
