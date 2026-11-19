@@ -34,10 +34,7 @@ const HAND_EDIT = " Hand-polished by the author.";
 const EDITED_REWRITE = [REWRITE.split("\n\n")[0]! + HAND_EDIT, ...REWRITE.split("\n\n").slice(1)].join("\n\n");
 // Typed into a later rewrite's preview, then left unapplied by closing the preview.
 const CANCEL_EDIT = " Saved aside by a cancelled preview.";
-const CANCELLED_REWRITE = [
-  REWRITE_2.split("\n\n")[0]! + CANCEL_EDIT,
-  ...REWRITE_2.split("\n\n").slice(1),
-].join("\n\n");
+const CANCELLED_REWRITE = [REWRITE_2.split("\n\n")[0]! + CANCEL_EDIT, ...REWRITE_2.split("\n\n").slice(1)].join("\n\n");
 
 /** Chapter text with both marker token lines removed and the gaps they leave closed. */
 function stripTokens(text: string): string {
@@ -568,9 +565,7 @@ test("Rewrite Part: markers across a page flip, streamed preview with gray conte
   await expect(root).toBeVisible();
   await root.getByRole("button", { name: "Rewrite the last chapter" }).click();
   await page.getByRole("button", { name: "Rewrite", exact: true }).click();
-  await expect
-    .poll(async () => (await chapter(1)).text)
-    .toBe(REWRITE_2);
+  await expect.poll(async () => (await chapter(1)).text).toBe(REWRITE_2);
   expect(await history()).toHaveLength(4);
   expect(await secondHistory()).toEqual([]);
 

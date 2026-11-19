@@ -12,6 +12,7 @@ import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { Check, Square, X } from "lucide-react";
 import type { PartPreview } from "../../hooks/use-story-generation";
+import { keepTabInside } from "./dialog-keys";
 import { useNumberFormat } from "./sidebar/fields";
 import { countWords, type StoryChapter, type StoryTheme } from "../../lib/story-writer/model";
 import { PART_END_TOKEN, PART_START_TOKEN, partSpanOf } from "../../lib/story-writer/part-markers";
@@ -110,19 +111,7 @@ export function PartPreviewDialog(props: PartPreviewDialogProps) {
     if (event.defaultPrevented) return;
     if (event.key === "Tab") {
       // aria-modal: keep Tab inside the dialog (PromptPeek's wrap-around).
-      const stops = Array.from(
-        (event.currentTarget as HTMLElement).querySelectorAll<HTMLElement>("button, [href], [tabindex='0']"),
-      );
-      const active = document.activeElement;
-      if (!active || !stops.length) return;
-      const order = (stop: HTMLElement) => active.compareDocumentPosition(stop);
-      const more = event.shiftKey
-        ? stops.some((stop) => order(stop) & Node.DOCUMENT_POSITION_PRECEDING)
-        : stops.some((stop) => order(stop) & Node.DOCUMENT_POSITION_FOLLOWING);
-      if (!more) {
-        event.preventDefault();
-        (event.shiftKey ? stops[stops.length - 1] : stops[0])?.focus();
-      }
+      keepTabInside(event, event.currentTarget as HTMLElement, "button, [href], [tabindex='0']");
       return;
     }
     if (event.key !== "Escape") return;
