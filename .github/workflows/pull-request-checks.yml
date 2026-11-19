@@ -251,6 +251,9 @@ jobs:
           npx tsx tests/story-writer-prompt.regression.ts
           npx tsx tests/story-writer-redo.regression.ts
           npx tsx tests/story-writer-markdown.regression.ts
+          npx tsx tests/story-writer-part-markers.regression.ts
+          npx tsx tests/story-writer-part-prompt.regression.ts
+          npx tsx tests/story-writer-part-apply.regression.ts
           npx tsx tests/story-writer-reader-layout.regression.ts
           npx tsx tests/story-writer-engine-resources.regression.ts
 

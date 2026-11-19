@@ -18,6 +18,7 @@ import { ChevronsDown, ChevronsUp } from "lucide-react";
 import { ChapterBlock } from "./ChapterBlock";
 import { prefersReducedMotion } from "./page-flip";
 import { caretRangeNear, focusEditableAt, selectionFocusRect } from "./reader-caret";
+import { partBlockIndexOfRange, partPinRoleAt } from "./reader-parts";
 import {
   TITLE_KEY,
   TitlePage,
@@ -210,15 +211,32 @@ export const StoryDocument = forwardRef<StoryReaderHandle, StoryReaderProps>(fun
     const target = event.target as Element;
     if (!editable || event.button !== 0 || !fromDocument(event)) return;
     if (target.closest("button, a, input, textarea, select")) return;
-    if ((target.closest(".sw-body") as HTMLElement | null)?.isContentEditable) return;
-    // A selection dragged out of the text stays selected.
-    if (!(document.getSelection()?.isCollapsed ?? true)) return;
     const elements = Array.from(columnRef.current?.querySelectorAll<HTMLElement>("[data-sw-block]") ?? []);
     const element =
       elements.find((candidate) => event.clientY < candidate.getBoundingClientRect().bottom) ??
       elements[elements.length - 1];
     const body = element?.querySelector<HTMLElement>(".sw-body");
-    if (!body?.isContentEditable) return;
+    if (!body) return;
+    if (props.partModeActive) {
+      // Marker mode: the click places or removes a Rewrite Part pin instead of the caret.
+      const blockKey = element?.dataset.swBlock;
+      if (!blockKey) return;
+      const pin = partPinRoleAt(document.elementFromPoint(event.clientX, event.clientY), event.clientY);
+      if (pin) {
+        props.onPartPinClick?.(blockKey, pin);
+        return;
+      }
+      const box = body.getBoundingClientRect();
+      const x = Math.min(box.right - 2, Math.max(box.left + 2, event.clientX));
+      const y = Math.min(box.bottom - 2, Math.max(box.top + 2, event.clientY));
+      const blockIndex = partBlockIndexOfRange(body, caretRangeNear(body, x, y, box.top, box.bottom));
+      if (blockIndex !== null) props.onPartClick?.(blockKey, blockIndex, event.clientX, event.clientY);
+      return;
+    }
+    if ((target.closest(".sw-body") as HTMLElement | null)?.isContentEditable) return;
+    // A selection dragged out of the text stays selected.
+    if (!(document.getSelection()?.isCollapsed ?? true)) return;
+    if (!body.isContentEditable) return;
     const box = body.getBoundingClientRect();
     const x = Math.min(box.right - 2, Math.max(box.left + 2, event.clientX));
     const y = Math.min(box.bottom - 2, Math.max(box.top + 2, event.clientY));
@@ -251,6 +269,9 @@ export const StoryDocument = forwardRef<StoryReaderHandle, StoryReaderProps>(fun
       className="sw-reader sw-document"
       data-theme="document"
       data-editable={editable ? "true" : "false"}
+      data-sw-part-mode={props.partModeActive ? "true" : undefined}
+      data-sw-part-invalid={props.partInvalid ? "true" : undefined}
+      data-sw-part-preview={props.partPreviewActive ? "true" : undefined}
       role="region"
       aria-label={t("reader.region")}
       tabIndex={0}

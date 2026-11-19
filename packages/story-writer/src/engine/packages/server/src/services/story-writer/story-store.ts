@@ -15,7 +15,9 @@ import {
   normalizeChapterPatch,
   normalizePreferences,
   normalizeStorySettings,
+  partHistoryDocumentId,
   storyDocumentId,
+  type PartHistoryEntry,
   type StoryChapter,
   type StoryRecord,
   type StorySummary,
@@ -136,7 +138,7 @@ function parseChapter(document: StoryDocument): StoryChapter {
 }
 
 interface DocumentType<T> {
-  kind: "preferences" | "story" | "chapter";
+  kind: "preferences" | "story" | "chapter" | "part-history";
   parse(document: StoryDocument): T;
   describe(value: T): { name: string; description: string };
 }
@@ -160,6 +162,42 @@ const CHAPTER: DocumentType<StoryChapter> = {
   kind: "chapter",
   parse: parseChapter,
   describe: (chapter) => ({ name: "Story Writer chapter", description: chapter.storyId }),
+};
+
+/** Stored as { storyId, entries }: the story tie lets a stray history document be told apart from junk. */
+interface PartHistoryRecord {
+  storyId: string;
+  entries: PartHistoryEntry[];
+}
+
+/** One history entry read back: every field revalidated, so a hand edit or older shape still reads whole. */
+function parsePartHistoryEntry(value: unknown): PartHistoryEntry | null {
+  if (!isRecord(value)) return null;
+  if (typeof value.textBefore !== "string" || typeof value.textAfter !== "string") return null;
+  return {
+    textBefore: value.textBefore.slice(0, LIMITS.chapterText),
+    textAfter: value.textAfter.slice(0, LIMITS.chapterText),
+    applied: value.applied === true,
+    createdAt: stringOr(value.createdAt, ""),
+    updatedAt: stringOr(value.updatedAt, ""),
+  };
+}
+
+function parsePartHistory(document: StoryDocument): PartHistoryRecord {
+  const data = isRecord(document.data) ? document.data : {};
+  const entries = Array.isArray(data.entries)
+    ? data.entries.flatMap((entry) => {
+        const parsed = parsePartHistoryEntry(entry);
+        return parsed ? [parsed] : [];
+      })
+    : [];
+  return { storyId: stringOr(data.storyId, ""), entries };
+}
+
+const PART_HISTORY: DocumentType<PartHistoryRecord> = {
+  kind: "part-history",
+  parse: parsePartHistory,
+  describe: (history) => ({ name: "Story Writer part history", description: history.storyId }),
 };
 
 function createDocument<T>(documents: StoryDocumentStore, type: DocumentType<T>, id: string, value: T, at: string) {
@@ -222,6 +260,15 @@ async function readChapters(documents: StoryDocumentStore, story: StoryRecord): 
     const chapter = document ? parseChapter(document) : null;
     return chapter?.storyId === story.id ? [chapter] : [];
   });
+}
+
+/** The chapter exists and belongs to the story, or the request stops with a 404. */
+async function assertChapter(documents: StoryDocumentStore, storyId: string, chapterId: string): Promise<void> {
+  const story = await readStory(documents, storyId);
+  if (!story.chapterIds.includes(chapterId)) throw new StoryWriterError(404, CHAPTER_NOT_FOUND);
+  const document = await documents.getById(PACKAGE_ID, chapterDocumentId(chapterId));
+  const chapter = document ? parseChapter(document) : null;
+  if (!chapter || chapter.storyId !== storyId) throw new StoryWriterError(404, CHAPTER_NOT_FOUND);
 }
 
 function totalsOf(chapters: StoryChapter[]) {
@@ -401,7 +448,10 @@ export function createStoryStore(persistence: StoryPersistence, options: { now?:
           // Chapters first: a story left behind by a failed delete still lists them; orphaned chapters would not be.
           for (const chapterId of story.chapterIds) {
             const document = await documents.getById(PACKAGE_ID, chapterDocumentId(chapterId));
-            if (document && parseChapter(document).storyId === id) await removeDocument(documents, document.id);
+            if (document && parseChapter(document).storyId === id) {
+              await removeDocument(documents, document.id);
+              await removeDocument(documents, partHistoryDocumentId(chapterId));
+            }
           }
           await removeDocument(documents, storyDocumentId(id));
         });
@@ -527,6 +577,8 @@ export function createStoryStore(persistence: StoryPersistence, options: { now?:
           const chapter = document ? parseChapter(document) : null;
           if (chapter && chapter.storyId !== id) throw new StoryWriterError(404, CHAPTER_NOT_FOUND);
           if (document) await removeDocument(documents, document.id);
+          // The chapter's Rewrite Part history dies with it, never outliving its chapter.
+          await removeDocument(documents, partHistoryDocumentId(targetId));
           const words = chapter ? countWords(chapter.text) : 0;
           await updateDocument(
             documents,
@@ -547,6 +599,65 @@ export function createStoryStore(persistence: StoryPersistence, options: { now?:
           );
         });
         return loadStory(id);
+      });
+    },
+
+    // ── Rewrite Part version history: one document per chapter, appended to, never truncated by restores ──
+
+    /** Reads the chapter's history, or [] when no rewrite was recorded yet. */
+    async listPartHistory(storyId: unknown, chapterId: unknown): Promise<PartHistoryEntry[]> {
+      const id = requireId(storyId, "Story");
+      const targetId = requireId(chapterId, "Chapter");
+      return serialized(storyDocumentId(id), async () => {
+        await assertChapter(persistence.documents, id, targetId);
+        const document = await persistence.documents.getById(PACKAGE_ID, partHistoryDocumentId(targetId));
+        return document ? parsePartHistory(document).entries : [];
+      });
+    },
+
+    /** Adds one entry (a confirmed rewrite, an unapplied draft, or a restore) and returns the whole list. */
+    async appendPartHistoryEntry(storyId: unknown, chapterId: unknown, entry: unknown): Promise<PartHistoryEntry[]> {
+      const id = requireId(storyId, "Story");
+      const targetId = requireId(chapterId, "Chapter");
+      const input = requireObject(entry, "Part history entry must be an object.");
+      const parsed = parsePartHistoryEntry(input);
+      if (!parsed) throw new StoryWriterError(400, "Part history entry needs textBefore and textAfter.");
+      return serialized(storyDocumentId(id), async () => {
+        const documents = persistence.documents;
+        const at = now();
+        await assertChapter(documents, id, targetId);
+        const documentId = partHistoryDocumentId(targetId);
+        const stamped = { ...parsed, createdAt: parsed.createdAt || at, updatedAt: at };
+        if (!(await documents.getById(PACKAGE_ID, documentId))) {
+          const record: PartHistoryRecord = { storyId: id, entries: [stamped] };
+          try {
+            await createDocument(documents, PART_HISTORY, documentId, record, at);
+            return record.entries;
+          } catch (error) {
+            // Another writer created it first: the append below lands in theirs.
+            if (!(await documents.getById(PACKAGE_ID, documentId))) throw error;
+          }
+        }
+        const { next } = await updateDocument(
+          documents,
+          PART_HISTORY,
+          documentId,
+          (current) => ({ ...current, entries: [...current.entries, stamped] }),
+          "Chapter not found.",
+          at,
+        );
+        return next.entries;
+      });
+    },
+
+    /** Empties the chapter's history (a whole-chapter rewrite starts it over). Returns the emptied list: []. */
+    async clearPartHistory(storyId: unknown, chapterId: unknown): Promise<PartHistoryEntry[]> {
+      const id = requireId(storyId, "Story");
+      const targetId = requireId(chapterId, "Chapter");
+      return serialized(storyDocumentId(id), async () => {
+        await assertChapter(persistence.documents, id, targetId);
+        await removeDocument(persistence.documents, partHistoryDocumentId(targetId));
+        return [];
       });
     },
   };

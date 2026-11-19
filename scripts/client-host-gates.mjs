@@ -1,4 +1,4 @@
-// Client bundle gates for the Engine's host namespace (Pasta-Devs/Marinara-Agents#1487).
+// Client bundle gates for the Engine's host namespace (HackZers7/Marinara-Agents#1487).
 //
 // Guardrail 2, the client metafile gate: every Engine store, service or component the Engine hands packages through
 // `__MARINARA_HOST__` must reach a client bundle only as its sources/host-client-overlay adapter, byte for byte. A

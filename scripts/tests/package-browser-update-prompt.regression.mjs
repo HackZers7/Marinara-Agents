@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import { declineLiveUpdates, readLiveCatalogVersions } from "../install-package-browser-fixture.mjs";
 
 const agentsRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
-const live = "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/staging/catalog";
+const live = "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/staging/catalog";
 const engineRoot = await mkdtemp(join(tmpdir(), "package-browser-update-prompt-"));
 const catalog = (entries) => ({
   schemaVersion: 1,

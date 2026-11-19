@@ -76,7 +76,7 @@ const MIN_ENGINE_VERSION = "2.3.0";
 const MAX_ENGINE_EXCLUSIVE = "4.0.0";
 // Every package built here takes the Engine's own code through its host (`__MARINARA_HOST__` and api.runtime), so each
 // one requires the capability API that provides it. That, not engine.min, gates them: an Engine without it never
-// installs these versions and keeps the one it has (Pasta-Devs/Marinara-Agents#1487).
+// installs these versions and keeps the one it has (HackZers7/Marinara-Agents#1487).
 const [hostApiMajor, hostApiMinor] = HOST_CAPABILITY_API.split(".").map(Number);
 const PACKAGE_CAPABILITY_API = Object.freeze({ major: hostApiMajor, minor: hostApiMinor });
 // Default Engine baseline for the host namespace and api.runtime members (Engine#7869 and #7868).
@@ -86,13 +86,13 @@ const PACKAGE_BUILT_AGAINST = Object.freeze({
   engineCommit: "25f8df7b0a388fe36f657d69c6fcaa9f27e066ed",
 });
 // Capability API 1.387 ships Engine E2 (no built-in recall where Long-Term Memory is on) with E3, so only an Engine
-// that leaves recall to this package installs the version that learns from chat messages (Pasta-Devs/Marinara-Agents#1744).
+// that leaves recall to this package installs the version that learns from chat messages (HackZers7/Marinara-Agents#1744).
 // Capability API 1.390 lets the Engine draw the agent page header (agentDetail.header: "engine"); 1.820 adds the
 // chat-activity slot, so an Engine without it refuses the manifest instead of dropping the Agent activity card.
 const LONG_TERM_MEMORY_CAPABILITY_API = Object.freeze({ major: 1, minor: 820 });
 // Capability API 1.819 gives packages characters on api.runtime.resources and the `character-write` permission
 // (Pasta-Devs/Marinara-Engine#9043), so Calls, Noodle and Slurp stop bundling the Engine's characters storage
-// (Pasta-Devs/Marinara-Agents#2242). Built against the Engine commit that added it.
+// (HackZers7/Marinara-Agents#2242). Built against the Engine commit that added it.
 const HOST_CHARACTERS_CAPABILITY_API = Object.freeze({ major: 1, minor: 819 });
 const HOST_CHARACTERS_BUILT_AGAINST = Object.freeze({
   engineVersion: "2.5.2",
@@ -311,7 +311,7 @@ function stackedOverlayPaths() {
   );
 }
 // Calls, Noodle and Slurp reach the Engine's live services through api.runtime instead of bundling copies of
-// them (Pasta-Devs/Marinara-Agents#1487): this overlay replaces each such vendored module at the same path.
+// them (HackZers7/Marinara-Agents#1487): this overlay replaces each such vendored module at the same path.
 // The generated server entry binds api.runtime first in activate(); see bundleServer().
 const hostRuntimeOverlayRoot = join(repoRoot, "sources/host-runtime-overlay");
 const HOST_RUNTIME_FEATURES = new Set(["conversation-calls", "noodle", "slurp2"]);
@@ -2333,7 +2333,7 @@ for (const feature of selectedFeatures) {
       category: feature.category ?? "misc",
       iconUrl: catalogArtworkUrl(feature.id),
       artifact: {
-        url: `https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artifacts/${basename(artifactPath)}`,
+        url: `https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artifacts/${basename(artifactPath)}`,
         sha256: sha256(artifact),
         bytes: artifact.byteLength,
       },
@@ -2341,10 +2341,10 @@ for (const feature of selectedFeatures) {
         feature.id === "hierarchical-maps"
           ? "https://github.com/Pasta-Devs/Marinara-Engine/blob/main/docs/agents/hierarchical-maps.md"
           : feature.id === "noodle"
-            ? "https://github.com/Pasta-Devs/Marinara-Agents/blob/main/packages/noodle/README.md"
+            ? "https://github.com/HackZers7/Marinara-Agents/blob/main/packages/noodle/README.md"
             : feature.id === "slurp2" || feature.id === "story-writer" || feature.id === "otome-forge"
-              ? `https://github.com/Pasta-Devs/Marinara-Agents/blob/main/packages/${feature.id}/README.md`
-              : `https://github.com/Pasta-Devs/Marinara-Agents#${feature.id}`,
+              ? `https://github.com/HackZers7/Marinara-Agents/blob/main/packages/${feature.id}/README.md`
+              : `https://github.com/HackZers7/Marinara-Agents#${feature.id}`,
     });
   } finally {
     await rm(temporary, { recursive: true, force: true });

@@ -18,6 +18,7 @@ import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
 import { chapterTitle, type StoryChapter, type StoryTheme } from "../../lib/story-writer/model";
+import type { PartMarkerRole } from "../../lib/story-writer/part-markers";
 import { ChapterBlock } from "./ChapterBlock";
 import {
   clonePageText,
@@ -29,6 +30,7 @@ import {
   type PageSide,
 } from "./page-flip";
 import { caretRangeNear, focusEditableAt, selectionFocusRect } from "./reader-caret";
+import { partBlockIndexOfRange, partPinRoleAt } from "./reader-parts";
 import {
   blockWidth,
   computeReaderLayout,
@@ -59,6 +61,17 @@ export interface StoryReaderProps {
   mariImageUrl: string;
   /** Where the chapter bar goes: the shell's band above the book. */
   chapterBarHost: HTMLElement | null;
+  /** Marker mode is on: book clicks place or remove Rewrite Part markers instead of moving the caret. */
+  partModeActive?: boolean;
+  /** The pair is corrupt or split: the surviving markers warn until cleared. */
+  partInvalid?: boolean;
+  /** This reader is the Rewrite Part preview: the marked draft reads normal, the context around it gray. */
+  partPreviewActive?: boolean;
+  /** Added to each chapter's number (a preview shows one chapter with its real number). */
+  numberOffset?: number;
+  /** A marker-mode click resolved to a block of a chapter, or to a placed pin. */
+  onPartClick?(chapterId: string, blockIndex: number, x: number, y: number): void;
+  onPartPinClick?(chapterId: string, role: PartMarkerRole): void;
   onChapterChange(chapterId: string, markdown: string): void;
   onStartChapter(chapterId: string, markdown: string): void;
 }
@@ -125,10 +138,11 @@ function isTypingTarget(target: Element): boolean {
  * and the handler for edits in them. Without page counts (the Document theme) every block counts as one page.
  */
 export function useReaderBlocks(
-  props: Pick<StoryReaderProps, "chapters" | "ghostChapterId" | "onChapterChange" | "onStartChapter">,
+  props: Pick<StoryReaderProps, "chapters" | "ghostChapterId" | "numberOffset" | "onChapterChange" | "onStartChapter">,
   pageCounts: Record<string, number>,
 ) {
   const { chapters, ghostChapterId } = props;
+  const numberOffset = props.numberOffset ?? 0;
   const latest = useRef(props);
   useLayoutEffect(() => {
     latest.current = props;
@@ -149,7 +163,7 @@ export function useReaderBlocks(
       push({
         key: chapter.id,
         kind: "chapter",
-        number: index + 1,
+        number: index + 1 + numberOffset,
         markdown: chapter.text,
         title: chapterTitle(chapter.text),
       }),
@@ -158,7 +172,13 @@ export function useReaderBlocks(
     // notifies later): keep that block, with the same key, so the author's caret survives.
     const started = pendingStart?.id;
     if (pendingStart && started !== ghostChapterId && !chapters.some((chapter) => chapter.id === started)) {
-      push({ key: pendingStart.id, kind: "chapter", number: list.length, markdown: pendingStart.markdown, title: "" });
+      push({
+        key: pendingStart.id,
+        kind: "chapter",
+        number: list.length + numberOffset,
+        markdown: pendingStart.markdown,
+        title: "",
+      });
     }
     // Right after the author starts the ghost page, its id is already a chapter; the shell sends a new ghost id.
     if (!chapters.some((chapter) => chapter.id === ghostChapterId)) {
@@ -696,13 +716,46 @@ export const StoryReader = forwardRef<StoryReaderHandle, StoryReaderProps>(funct
     focusEditableAt(body, range, page >= target.start + target.pages - 1 ? "end" : "start");
   };
 
+  /** A marker-mode click: resolve the chapter and block it lands on, or the placed pin it hit. */
+  const placePartMarkerAt = (x: number, y: number) => {
+    const { layout: current, blocks: list, current: active, props: latest } = live.current;
+    const viewport = viewportRef.current;
+    if (!current || !viewport) return;
+    const box = viewport.getBoundingClientRect();
+    const index = current.pagesPerSpread === 2 && x - box.left > current.textWidth + current.gap / 2 ? 1 : 0;
+    const page = active * current.pagesPerSpread + index;
+    const block = blockAtPage(list, page);
+    if (!block || block.kind !== "chapter") return;
+    const body = blockBody(block.key);
+    if (!body) return;
+    // A click on a bordered block removes that marker first.
+    const pin = partPinRoleAt(document.elementFromPoint(x, y), y);
+    if (pin) {
+      latest.onPartPinClick?.(block.key, pin);
+      return;
+    }
+    const left = box.left + index * (current.textWidth + current.gap);
+    const clampedX = Math.min(left + current.textWidth - 2, Math.max(left + 2, x));
+    const clampedY = Math.min(box.top + current.textHeight - 2, Math.max(box.top + 2, y));
+    const range = caretRangeNear(body, clampedX, clampedY, box.top, box.top + current.textHeight);
+    const blockIndex = partBlockIndexOfRange(body, range);
+    if (blockIndex !== null) latest.onPartClick?.(block.key, blockIndex, x, y);
+  };
+
   const isOwnControl = (target: Element) => !!target.closest("button, a, input, textarea, select");
   const isEditableBody = (target: Element) => !!(target.closest(".sw-body") as HTMLElement | null)?.isContentEditable;
 
   const handleBookMouseDown = (event: ReactMouseEvent<HTMLDivElement>) => {
     marginPressRef.current = false;
     const target = event.target as Element;
-    if (event.button !== 0 || !editable || isOwnControl(target) || isEditableBody(target)) return;
+    if (event.button !== 0 || !editable || isOwnControl(target)) return;
+    if (live.current.props.partModeActive) {
+      // Marker mode: a click on the text must not grab focus or start a selection — the body would then keep its
+      // old Markdown until blur, and the new pins would not show. The click handler below places the pin.
+      if (isEditableBody(target)) event.preventDefault();
+      return;
+    }
+    if (isEditableBody(target)) return;
     // Keep the current caret until the click places the new one (no blur and re-render in between).
     event.preventDefault();
     marginPressRef.current = true;
@@ -712,7 +765,12 @@ export const StoryReader = forwardRef<StoryReaderHandle, StoryReaderProps>(funct
     const fromMargin = marginPressRef.current;
     marginPressRef.current = false;
     const target = event.target as Element;
-    if (isOwnControl(target) || isEditableBody(target)) return;
+    if (isOwnControl(target)) return;
+    if (live.current.props.partModeActive) {
+      placePartMarkerAt(event.clientX, event.clientY);
+      return;
+    }
+    if (isEditableBody(target)) return;
     // A selection dragged out of the text onto the margin stays selected.
     if (!fromMargin && !(document.getSelection()?.isCollapsed ?? true)) return;
     placeCaretAt(event.clientX, event.clientY);
@@ -1003,6 +1061,9 @@ export const StoryReader = forwardRef<StoryReaderHandle, StoryReaderProps>(funct
       data-pps={pps}
       data-arrows={layout?.arrowsOutside === false ? "inside" : "outside"}
       data-editable={editable ? "true" : "false"}
+      data-sw-part-mode={props.partModeActive ? "true" : undefined}
+      data-sw-part-invalid={props.partInvalid ? "true" : undefined}
+      data-sw-part-preview={props.partPreviewActive ? "true" : undefined}
       role="region"
       aria-label={t("reader.region")}
       style={rootStyle}

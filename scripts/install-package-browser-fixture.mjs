@@ -33,7 +33,7 @@ function isSymlink(entry) {
   return ((entry.attr >>> 16) & 0o170000) === 0o120000;
 }
 
-const LIVE_CATALOG_ROOT = "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/staging/catalog";
+const LIVE_CATALOG_ROOT = "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/staging/catalog";
 const ENGINE_RELEASE_VERSION = /^v?(\d+)\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/u;
 
 /**

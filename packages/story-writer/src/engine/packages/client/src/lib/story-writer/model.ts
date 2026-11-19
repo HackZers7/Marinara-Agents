@@ -159,6 +159,18 @@ export interface StoryWithChapters {
   chapters: StoryChapter[];
 }
 
+/**
+ * One recorded step of a chapter's Rewrite Part span: what the span was before, what it became after (a confirmed
+ * rewrite, hand edits included, or an abandoned draft), and whether it ever reached the chapter.
+ */
+export interface PartHistoryEntry {
+  textBefore: string;
+  textAfter: string;
+  applied: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // ── Server API (prefix /api/story-writer; the host api client takes paths without "/api") ──
 // GET    /story-writer/preferences                         → StoryWriterPreferences
 // PATCH  /story-writer/preferences       Partial<Prefs>    → StoryWriterPreferences
@@ -171,6 +183,9 @@ export interface StoryWithChapters {
 // POST   /story-writer/stories/:id/chapters  ChapterCreate → StoryWithChapters
 // PATCH  /story-writer/stories/:id/chapters/:chapterId  ChapterPatch → { story: StoryRecord; chapter: StoryChapter }
 // DELETE /story-writer/stories/:id/chapters/:chapterId     → StoryWithChapters
+// GET    /story-writer/stories/:id/chapters/:chapterId/part-history → PartHistoryEntry[]
+// POST   /story-writer/stories/:id/chapters/:chapterId/part-history { textBefore, textAfter, applied } → PartHistoryEntry[]
+// DELETE /story-writer/stories/:id/chapters/:chapterId/part-history → PartHistoryEntry[] (cleared by a whole rewrite)
 // Errors: { error: string } with 400 (invalid input), 404 (unknown story/chapter), 409 (chapter id taken).
 
 export interface ChapterCreate {
@@ -197,6 +212,11 @@ export function storyDocumentId(storyId: string): string {
 
 export function chapterDocumentId(chapterId: string): string {
   return `${STORY_WRITER_PACKAGE_ID}:chapter:${chapterId}`;
+}
+
+/** One Rewrite Part history document per chapter, so it dies with the chapter it belongs to. */
+export function partHistoryDocumentId(chapterId: string): string {
+  return `${STORY_WRITER_PACKAGE_ID}:part-history:${chapterId}`;
 }
 
 export const PREFERENCES_DOCUMENT_ID = `${STORY_WRITER_PACKAGE_ID}:preferences`;
@@ -384,7 +404,12 @@ export function normalizeStorySettings(patch: unknown, base: StorySettings = def
 export function normalizeChapterPatch(patch: unknown): ChapterPatch {
   const input = isRecord(patch) ? patch : {};
   const result: ChapterPatch = {};
-  if (typeof input.text === "string") result.text = input.text.slice(0, LIMITS.chapterText);
+  if (typeof input.text === "string") {
+    // Marker tokens never eat the chapter budget: the slice grants back the length their lines occupy, stripped
+    // exactly as countWords strips them. Token-free text slices byte for byte as before.
+    const stripped = input.text.replace(PART_TOKEN_LINE, " ");
+    result.text = input.text.slice(0, LIMITS.chapterText + (input.text.length - stripped.length));
+  }
   if (typeof input.summary === "string") result.summary = input.summary.slice(0, LIMITS.summary);
   if (input.status === "draft" || input.status === "complete") result.status = input.status;
   if (typeof input.request === "string") result.request = input.request.slice(0, LIMITS.longText);
@@ -393,11 +418,21 @@ export function normalizeChapterPatch(patch: unknown): ChapterPatch {
 
 // ── Text helpers shared by the client, the server and the prompt ──
 
-/** Counts words the way a reader would: Markdown markers and scene breaks do not count. */
+/**
+ * A Rewrite Part marker token standing on its own line, with the blank-line edges a strip may tidy. Every place that
+ * discounts the tokens — word counts, the chapter text limit — strips them through this one regex, so the accounting
+ * can never disagree. ponytail: the token shape is duplicated from part-markers.ts because model.ts must keep its
+ * zero imports — the server bundle takes it by relative path, and part-markers.ts sits in the client tree. Upgrade:
+ * move the token constants into a tiny shared module both bundles can take.
+ */
+const PART_TOKEN_LINE = /^\s*<!--sw:part-(?:start|end)-->\s*$/gm;
+
+/** Counts words the way a reader would: Markdown markers, scene breaks and Rewrite Part tokens do not count. */
 export function countWords(markdown: string): number {
   const plain = markdown
     .replace(/^\s{0,3}(?:#{1,6}\s+|>\s?)/gm, "")
     .replace(/^\s*(?:\*{3,}|-{3,}|_{3,})\s*$/gm, " ")
+    .replace(PART_TOKEN_LINE, " ")
     .replace(/[*_~=`]+/g, "");
   const matches = plain.match(/[\p{L}\p{N}][\p{L}\p{N}'’-]*/gu);
   const words = matches?.length ?? 0;

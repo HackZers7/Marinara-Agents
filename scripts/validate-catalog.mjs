@@ -620,7 +620,7 @@ for (const entry of catalog.packages) {
   const expectedArtifactName = isRuleset
     ? rulesetArtifactName(manifest.id, manifest.version)
     : packageArtifactName(manifest.id, manifest.version);
-  const expectedArtifactUrl = `https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artifacts/${expectedArtifactName}`;
+  const expectedArtifactUrl = `https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artifacts/${expectedArtifactName}`;
   if (artifact.url !== expectedArtifactUrl) {
     throw new Error(`Artifact URL for ${manifest.id} must be ${expectedArtifactUrl}`);
   }
@@ -693,7 +693,7 @@ for (const entry of catalog.packages) {
         (key) => !["url", "sha256", "bytes", "name", "description"].includes(key),
       );
       if (extraKeys.length) throw new Error(`Language pack ${locale} for ${manifest.id} holds "${extraKeys[0]}"`);
-      if (pack.url !== `https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artifacts/${packName}`) {
+      if (pack.url !== `https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artifacts/${packName}`) {
         throw new Error(`Language pack URL for ${manifest.id} ${locale} must name artifacts/${packName}`);
       }
       const packBytes = await readFile(

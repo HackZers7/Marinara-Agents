@@ -110,5 +110,19 @@ export function storyWriterRoutes(store: StoryStore, logger: StoryWriterLogger) 
       "/stories/:storyId/chapters/:chapterId",
       handle((request) => store.deleteChapter(storyId(request), chapterId(request))),
     );
+    router.get(
+      "/stories/:storyId/chapters/:chapterId/part-history",
+      handle((request) => store.listPartHistory(storyId(request), chapterId(request))),
+    );
+    // History text is chapter-sized, so the append rides the same write limit as a chapter patch.
+    router.post(
+      "/stories/:storyId/chapters/:chapterId/part-history",
+      WRITE,
+      handle((request) => store.appendPartHistoryEntry(storyId(request), chapterId(request), request.body)),
+    );
+    router.delete(
+      "/stories/:storyId/chapters/:chapterId/part-history",
+      handle((request) => store.clearPartHistory(storyId(request), chapterId(request))),
+    );
   };
 }

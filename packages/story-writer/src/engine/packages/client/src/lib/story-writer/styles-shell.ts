@@ -989,12 +989,79 @@ const DEVICE_RULES = `
   ${R} :is(.sw-section-body, .sw-save-state .sw-save-dot) { animation: none; }
 }`;
 
+// Rewrite Part: the mode's side panel, the preview dialog and the version-history dialog (PromptPeek's shape).
+// Gray context in the preview is styled in styles-reader.ts (the span tint), riding the same marker attributes the
+// renderer already emits.
+const PART_RULES = `
+${R} .sw-part-panel {
+  position: absolute; top: 14px; z-index: 26; width: 252px; max-height: calc(100% - 28px); padding: 12px;
+  display: grid; gap: 10px; align-content: start; overflow-y: auto; overscroll-behavior: contain;
+  border: 1px solid var(--sw-panel-border); border-radius: 12px;
+  background: var(--sw-panel-texture), var(--sw-panel-bg); color: var(--sw-panel-fg);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+}
+${R} .sw-part-panel-head h2 { margin: 0; font-family: var(--sw-heading-font); font-size: 15px; color: var(--sw-heading-fg); }
+${R} .sw-part-panel .sw-textarea { min-height: 84px; }
+${R} .sw-part-risk { color: var(--sw-danger, #b3452b); }
+${R} .sw-part-preview-scrim { display: block; z-index: 50; }
+${R} .sw-part-preview {
+  position: absolute; inset: 16px 16px calc(16px + ${SAFE_BOTTOM}); z-index: 51;
+  display: flex; flex-direction: column; min-height: 0; overflow: hidden; border-radius: 14px;
+  background: var(--sw-panel-texture), var(--sw-panel-bg); color: var(--sw-panel-fg);
+  box-shadow: 0 0 0 1px var(--sw-panel-border), 0 24px 64px rgba(0, 0, 0, 0.45);
+}
+${R} .sw-part-preview:focus { outline: none; }
+${R} .sw-part-preview-head { display: flex; flex: none; align-items: center; gap: 8px; padding: 10px 10px 6px 18px; }
+${R} .sw-part-preview-head h2 {
+  flex: 1; min-width: 0; margin: 0; font-family: var(--sw-heading-font); font-size: 16px; color: var(--sw-heading-fg);
+}
+${R} .sw-part-preview-words { color: var(--sw-panel-muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+${R} .sw-part-preview-stage { position: relative; flex: 1; min-height: 0; }
+${R} .sw-part-preview-stage .sw-reader { position: absolute; inset: 0; }
+${R} .sw-history-scrim { display: block; z-index: 52; }
+${R} .sw-history {
+  position: absolute; top: 50%; left: 50%; z-index: 53; translate: -50% -50%;
+  display: flex; flex-direction: column; width: min(640px, calc(100% - 32px));
+  max-height: calc(100% - 32px - ${SAFE_BOTTOM}); min-height: 0; overflow: hidden; border-radius: 14px;
+  background: var(--sw-panel-texture), var(--sw-panel-bg); color: var(--sw-panel-fg);
+  box-shadow: 0 0 0 1px var(--sw-panel-border), 0 24px 64px rgba(0, 0, 0, 0.45);
+}
+${R} :is(.sw-history, .sw-history-body):focus { outline: none; }
+${R} .sw-history-head { display: flex; flex: none; align-items: center; gap: 8px; padding: 10px 10px 6px 18px; }
+${R} .sw-history-head h2 {
+  flex: 1; min-width: 0; margin: 0; font-family: var(--sw-heading-font); font-size: 16px; color: var(--sw-heading-fg);
+}
+${R} .sw-history-order { min-height: 0; padding: 4px 8px; font-size: 12px; }
+${R} .sw-history-order .sw-switch { width: 26px; height: 14px; }
+${R} .sw-history-order .sw-switch::after { width: 10px; height: 10px; }
+${R} .sw-history-body {
+  display: grid; flex: 1; min-height: 0; align-content: start; gap: 8px; padding: 0 18px 18px;
+  overflow-y: auto; overscroll-behavior: contain;
+}
+${R} .sw-history-list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+${R} .sw-history-entry {
+  display: grid; gap: 8px; padding: 10px; border: 1px solid var(--sw-field-border); border-radius: 10px;
+  background: var(--sw-field-bg); color: var(--sw-field-fg);
+}
+${R} .sw-history-entry > .sw-button { justify-content: center; }
+${R} .sw-history-fold summary {
+  display: flex; align-items: center; gap: 10px; min-height: 32px; cursor: pointer; font-size: 13px;
+}
+${R} .sw-history-entry-title { font-weight: 600; }
+${R} .sw-history-entry-meta { margin-inline-start: auto; color: var(--sw-panel-muted); font-variant-numeric: tabular-nums; }
+${R} .sw-history-entry-label { margin: 0 0 4px; font-size: 12px; color: var(--sw-panel-muted); }
+${R} .sw-history-entry-text {
+  max-height: 200px; margin: 0; padding: 8px 10px; overflow-y: auto; white-space: pre-wrap; overflow-wrap: anywhere;
+  border: 1px solid var(--sw-field-border); border-radius: 8px; font-size: 13px; line-height: 1.5;
+}`;
+
 export const SHELL_STYLES = [
   ROOT_RULES,
   THEME_RULES,
   CONTROL_RULES,
   DRAWER_RULES,
   PEEK_RULES,
+  PART_RULES,
   NOTE_RULES,
   ACTION_RULES,
   LAYOUT_RULES,

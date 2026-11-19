@@ -16,6 +16,7 @@ import {
   normalizeStorySettings,
   type ChapterCreate,
   type ChapterPatch,
+  type PartHistoryEntry,
   type StoryChapter,
   type StoryRecord,
   type StorySettings,
@@ -28,6 +29,7 @@ export const storyWriterKeys = {
   preferences: ["story-writer", "preferences"] as const,
   stories: ["story-writer", "stories"] as const,
   story: (id: string) => ["story-writer", "story", id] as const,
+  partHistory: (storyId: string, chapterId: string) => ["story-writer", "partHistory", storyId, chapterId] as const,
 };
 
 const SETTINGS_SAVE_DELAY = 600;
@@ -82,6 +84,8 @@ let translate: (key: string) => string = (key) => key;
 const settingsKey = (storyId: string) => `settings:${storyId}`;
 const chapterKey = (chapterId: string) => `chapter:${chapterId}`;
 const storyPath = (storyId: string) => `/story-writer/stories/${encodeURIComponent(storyId)}`;
+const partHistoryPath = (storyId: string, chapterId: string) =>
+  `${storyPath(storyId)}/chapters/${encodeURIComponent(chapterId)}/part-history`;
 
 function bump(key: string): number {
   const next = (edits.get(key) ?? 0) + 1;
@@ -534,6 +538,67 @@ export function useStoryList(): {
     duplicate,
     remove,
   };
+}
+
+export interface PartHistoryApi {
+  /** The chapter's entries, oldest first; [] while the first load runs. */
+  entries: PartHistoryEntry[];
+  isLoading: boolean;
+  /** Adds one entry (a confirm, a hand-edited cancel, a restore) and refreshes the list. */
+  append(entry: { textBefore: string; textAfter: string; applied: boolean }): Promise<void>;
+  /**
+   * Empties a chapter's history (a whole-chapter rewrite starts it over): the chapter this hook is bound to by
+   * default, or any chapter of the story by id — the rewrite clears the rewritten chapter's, wherever the pair sits.
+   */
+  clear(targetChapterId?: string): Promise<void>;
+}
+
+/**
+ * A chapter's Rewrite Part version history. The history document is per chapter, so the query is keyed by both ids;
+ * every mutation returns the whole list and lands straight in the cache.
+ */
+export function usePartHistory(storyId: string | null, chapterId: string | null): PartHistoryApi {
+  useErrorText();
+  const qc = useQueryClient();
+  const key = storyId && chapterId ? storyWriterKeys.partHistory(storyId, chapterId) : null;
+  const query = useQuery({
+    queryKey: key ?? storyWriterKeys.partHistory("", ""),
+    queryFn: () => api.get<PartHistoryEntry[]>(partHistoryPath(storyId!, chapterId!)),
+    enabled: !!key,
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+  });
+  useReportQueryError(query.error, "errors.loadHistory");
+  const append = useCallback(
+    async (entry: { textBefore: string; textAfter: string; applied: boolean }) => {
+      if (!storyId || !chapterId) return;
+      try {
+        qc.setQueryData(
+          storyWriterKeys.partHistory(storyId, chapterId),
+          await api.post<PartHistoryEntry[]>(partHistoryPath(storyId, chapterId), entry),
+        );
+      } catch (error) {
+        reportError(error, "errors.saveHistory");
+      }
+    },
+    [qc, storyId, chapterId],
+  );
+  const clear = useCallback(
+    async (targetChapterId: string | null = chapterId) => {
+      const target = targetChapterId ?? chapterId;
+      if (!storyId || !target) return;
+      try {
+        qc.setQueryData(
+          storyWriterKeys.partHistory(storyId, target),
+          await api.delete<PartHistoryEntry[]>(partHistoryPath(storyId, target)),
+        );
+      } catch {
+        // The chapter is being cleared anyway; a stale history list behind it is harmless.
+      }
+    },
+    [qc, storyId, chapterId],
+  );
+  return { entries: query.data ?? [], isLoading: query.isLoading, append, clear };
 }
 
 export interface StoryDocumentApi {

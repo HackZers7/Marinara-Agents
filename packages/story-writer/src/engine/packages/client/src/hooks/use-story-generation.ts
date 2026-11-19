@@ -16,6 +16,12 @@ import {
   type StoryWithChapters,
 } from "../lib/story-writer/model";
 import {
+  findStoryPartMarkers,
+  partContextExcerpt,
+  partSpanOf,
+  PART_CONTEXT_CHARS,
+} from "../lib/story-writer/part-markers";
+import {
   buildSummaryMessages,
   buildTimelineMessages,
   createClientId,
@@ -24,6 +30,7 @@ import {
   joinContinuation,
   parseTimelineResponse,
   planChapter,
+  planRewriteSpan,
   tokenBudget,
   visibleStreamingText,
   type ChatMessage,
@@ -39,7 +46,20 @@ import {
 } from "./use-engine-resources";
 import { storyWriterKeys, type StoryDocumentApi } from "./use-story-writer";
 
-export type GenerationStatus = "idle" | "writing" | "summarizing" | "timeline";
+export type GenerationStatus = "idle" | "writing" | "summarizing" | "timeline" | "part";
+
+/** A Rewrite Part run's preview: the marked span streaming in, with its surrounding context. */
+export interface PartPreview {
+  chapterId: string;
+  chapterNumber: number;
+  /** Token-free Markdown, shown gray and read-only on each side of the draft. */
+  contextBefore: string;
+  contextAfter: string;
+  /** The streamed replacement text so far. */
+  draft: string;
+  /** Words in the draft so far. */
+  words: number;
+}
 
 /** The prompt the Engine would send for the primary Write button, as its raw route answers `returnPrompt`. */
 export interface PromptPeek {
@@ -68,6 +88,18 @@ export interface StoryGenerationApi {
    * Null when there is no story or no connection.
    */
   peekPrompt(signal: AbortSignal): Promise<PromptPeek | null>;
+  /** The Rewrite Part preview while a span rewrite runs, else null. The book itself never changes during the run. */
+  partPreview: PartPreview | null;
+  /**
+   * Rewrites the story's marked span into the preview. The instruction is required and the pair must be valid; the
+   * story stays untouched: the draft is applied (or dropped) only after the run ends.
+   */
+  rewritePart(instruction: string, includeOriginal: boolean): Promise<void>;
+  /**
+   * Drops a finished preview's draft: after its text was applied to the chapter, or when the author cancels a draft
+   * they hand-edited. The single place a draft goes away outside a run, so version history (ticket 04) can take over.
+   */
+  discardPartPreview(): void;
   stop(): void;
   summarizeChapter(chapterId: string): Promise<void>;
   summarizeOlderChapters(): Promise<void>;
@@ -98,6 +130,8 @@ interface OperationContext {
   readStory(): StoryWithChapters | null;
   setStatus(status: GenerationStatus): void;
   setLive(chapterId: string | null, words: number): void;
+  /** Sets or clears the Rewrite Part preview; clearing drops the draft. */
+  setPartPreview(preview: PartPreview | null): void;
 }
 
 interface Completion {
@@ -277,6 +311,86 @@ async function refreshTimeline(context: OperationContext): Promise<number | null
   return events.length;
 }
 
+/**
+ * Streams a Rewrite Part run into the preview. The story is never touched: an abort discards the draft with a
+ * notification while the mode and markers stay, and a finished draft stays in the preview for ticket 03 to apply.
+ */
+async function writePart(context: OperationContext, instruction: string, includeOriginal: boolean): Promise<void> {
+  const { run, connection, t } = context;
+  const story = context.readStory();
+  if (!story) return;
+  const markers = findStoryPartMarkers(story.chapters);
+  const chapter = story.chapters.find((item) => item.id === markers.chapterId);
+  const span = chapter ? partSpanOf(chapter.text) : null;
+  if (!chapter || !span || markers.status.kind !== "ready") {
+    toast.error(t("part.generatePairMissing"));
+    return;
+  }
+  const plan = await planRewriteSpan({
+    settings: story.story.settings,
+    chapters: story.chapters,
+    chapter,
+    span,
+    instruction,
+    includeOriginal,
+    savedMaxTokens: connection.savedMaxTokens,
+    sources: promptSources(context.queryClient),
+  });
+  if (run.controller.signal.aborted) return;
+
+  const fixed: PartPreview = {
+    chapterId: chapter.id,
+    chapterNumber: plan.chapterNumber,
+    contextBefore: partContextExcerpt(span.before, PART_CONTEXT_CHARS, "end"),
+    contextAfter: partContextExcerpt(span.after, PART_CONTEXT_CHARS, "start"),
+    draft: "",
+    words: 0,
+  };
+  context.setPartPreview({ ...fixed });
+
+  let pendingRaw = "";
+  let cancelFrame = null as (() => void) | null;
+  const onText = (raw: string) => {
+    pendingRaw = raw;
+    // One state write per frame, the same throttle the chapter stream uses.
+    cancelFrame ??= scheduleFrame(() => {
+      cancelFrame = null;
+      const visible = visibleStreamingText(pendingRaw).trimStart();
+      context.setPartPreview({ ...fixed, draft: visible, words: countWords(visible) });
+    });
+  };
+
+  let result: Completion;
+  let failure: unknown = null;
+  try {
+    result = await complete(context, plan.messages, plan.maxTokens, context.streaming ? onText : undefined);
+  } catch (error) {
+    failure = error;
+    const partial = (error as { partial?: unknown } | null)?.partial;
+    result = { content: typeof partial === "string" ? partial : pendingRaw, aborted: false, finished: false };
+  } finally {
+    cancelFrame?.();
+  }
+
+  if (result.aborted) {
+    // The Stop control: the draft goes away with a notification; mode and markers stay in place.
+    context.setPartPreview(null);
+    toast.info(t("part.generateAborted"));
+    return;
+  }
+  const draft = visibleStreamingText(result.content).trim().slice(0, LIMITS.chapterText);
+  if (!draft) {
+    context.setPartPreview(null);
+    if (failure) throw failure;
+    toast.error(t("generation.errors.empty"));
+    return;
+  }
+  context.setPartPreview({ ...fixed, draft, words: countWords(draft) });
+  const banned = findBannedPhrases(draft, story.story.settings.bannedPhrases);
+  if (banned.length) toast.warning(t("generation.bannedPhrases", { phrases: banned.join(", ") }));
+  if (failure) throw failure;
+}
+
 async function writeChapter(
   context: OperationContext,
   requested: "next" | "continue" | "rewrite",
@@ -290,6 +404,8 @@ async function writeChapter(
   if (!story) return;
   const settings = story.story.settings;
   const last = story.chapters[story.chapters.length - 1];
+  // A chapter run supersedes any finished part preview: its draft belongs to a story state that is changing.
+  context.setPartPreview(null);
   // Cast and lore load before the story changes, so a failure here leaves it as it was.
   const { mode, original, chapterNumber, request, messages, maxTokens } = await planChapter({
     settings,
@@ -420,6 +536,7 @@ export function useStoryGeneration(args: {
   const [latestGeneration, setLatestGeneration] = useState<LatestGeneration | null>(null);
   const activeStoryId = doc.data?.story.id ?? null;
   if (latestGeneration && latestGeneration.storyId !== activeStoryId) setLatestGeneration(null);
+  const [partPreview, setPartPreview] = useState<PartPreview | null>(null);
   const latest = useRef({ doc, streaming, debugMode, connections, t });
   const runRef = useRef<Run | null>(null);
 
@@ -471,6 +588,7 @@ export function useStoryGeneration(args: {
             setGeneratingChapterId(chapterId);
             setLiveWords(words);
           },
+          setPartPreview,
         });
       } catch (error) {
         if (!run.controller.signal.aborted && !isAbortError(error)) {
@@ -520,6 +638,13 @@ export function useStoryGeneration(args: {
     [operate, latestGeneration],
   );
 
+  const rewritePart = useCallback(
+    (instruction: string, includeOriginal: boolean) =>
+      operate("part", (context) => writePart(context, instruction, includeOriginal)),
+    [operate],
+  );
+
+  const discardPartPreview = useCallback(() => setPartPreview(null), []);
   // Outside operate(): a peek takes no run, sets no status and never touches a chapter.
   const peekPrompt = useCallback(
     async (signal: AbortSignal): Promise<PromptPeek | null> => {
@@ -611,6 +736,9 @@ export function useStoryGeneration(args: {
     redoChapter,
     redo,
     peekPrompt,
+    partPreview,
+    rewritePart,
+    discardPartPreview,
     stop,
     summarizeChapter,
     summarizeOlderChapters,

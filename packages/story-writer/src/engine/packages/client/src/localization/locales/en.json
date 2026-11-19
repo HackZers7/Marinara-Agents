@@ -51,8 +51,11 @@
     "writingStatus": "Writing chapter {{number}}…",
     "summarizing": "Summarizing…",
     "timeline": "Planning the timeline…",
+    "partStatus": "Rewriting the part…",
     "continueLast": "Continue the last chapter",
     "rewriteLast": "Rewrite the last chapter",
+    "rewritePart": "Rewrite a part",
+    "rewritePartExit": "Leave Rewrite Part",
     "rewriteTitle": "Rewrite chapter {{number}}?",
     "rewriteMessage": "The text of chapter {{number}} will be replaced by a new version. This cannot be undone.",
     "rewriteConfirm": "Rewrite",
@@ -234,6 +237,54 @@
       "assistant": "Assistant"
     }
   },
+  "part": {
+    "crossChapter": "Both markers must sit in the same chapter. Click in the chapter your first marker is in.",
+    "pairExists": "Both markers are placed. Click a marker to remove it, or clear the pair to start over.",
+    "invalidPair": "A part marker looks wrong after editing. Click the surviving marker to remove it, then place both again.",
+    "startPlaced": "Start marker placed. Click where the part ends.",
+    "endPlaced": "Part selected.",
+    "startHint": "Start",
+    "endHint": "End",
+    "panel": {
+      "label": "Rewrite Part controls",
+      "title": "Rewrite a part",
+      "hint": "Place both markers in the chapter, describe what to change, and generate. The result streams into a preview; nothing changes until it is applied."
+    },
+    "instruction": "Rewrite instruction",
+    "instructionPlaceholder": "e.g. Make this scene tenser; keep the dialogue and the ending.",
+    "includeOriginal": "Include the original text",
+    "includeOriginalHint": "The model sees the selected text and rewrites it.",
+    "riskNote": "Without the original, the rewrite may come back longer or shorter and drift from established facts.",
+    "generate": "Generate rewrite",
+    "reset": "Reset markers",
+    "generatePairMissing": "Place both part markers before generating a rewrite.",
+    "generateAborted": "Rewrite stopped. The draft was discarded; your markers are still in place.",
+    "applied": "Rewrite applied. The markers now wrap the new text.",
+    "pairMissing": "The markers are gone, so the rewrite had nothing to replace. Place both part markers and generate again.",
+    "preview": {
+      "title": "Rewriting part of chapter {{number}}",
+      "apply": "Apply",
+      "applyLabel": "Apply the rewrite to the chapter",
+      "close": "Close the preview"
+    },
+    "history": {
+      "open": "Version history",
+      "openWithCount": "Version history ({{count}})",
+      "title": "Version history — chapter {{number}}",
+      "titleNoChapter": "Version history",
+      "close": "Close the version history",
+      "loading": "Loading the version history…",
+      "empty": "No versions yet. Confirmed rewrites and hand-edited drafts you cancel land here.",
+      "list": "Recorded versions",
+      "entryApplied": "Version {{number}} · applied",
+      "entryDraft": "Version {{number}} · unapplied draft",
+      "entryPreview": "Text this version would restore",
+      "restore": "Restore",
+      "restored": "Version restored as the current text and recorded as a new entry.",
+      "restorePairMissing": "Place both part markers before restoring a version.",
+      "newestFirst": "Newest first"
+    }
+  },
   "quickReplies": {
     "label": "Quick replies",
     "show": "Show quick replies",
@@ -292,7 +343,9 @@
     "createChapter": "Could not start the chapter.",
     "deleteChapter": "Could not delete the chapter.",
     "export": "Could not export the story.",
-    "openConnection": "The connection editor could not be opened from here. Open Connections from the main menu."
+    "openConnection": "The connection editor could not be opened from here. Open Connections from the main menu.",
+    "loadHistory": "Could not load the version history.",
+    "saveHistory": "Could not save the version to the history."
   },
   "reader": {
     "region": "Story reader",

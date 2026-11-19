@@ -88,7 +88,7 @@ process.stdout.write(process.env.MOCK_PR_JSON);
         encoding: "utf8",
         env: {
           PATH: `${directory}${delimiter}${process.env.PATH}`,
-          GH_REPO: "Pasta-Devs/Marinara-Agents",
+          GH_REPO: "HackZers7/Marinara-Agents",
           PR_NUM: test.number ?? "1644",
           DOTTORE_BASE_REFS: test.refs ?? "main,staging",
           GITHUB_OUTPUT: output,

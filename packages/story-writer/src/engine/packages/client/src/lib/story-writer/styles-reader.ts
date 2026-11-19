@@ -403,6 +403,53 @@ ${R} .sw-body[data-generating="true"] > :is(p, div):last-child::after {
   }
 }
 
+/* ── Rewrite Part markers ── */
+
+/* A marker rides as an attribute on the block it borders; the pin is that block's before-edge. Outside marker mode
+   the borders are inert, so a reader never sees anything. */
+${R} .sw-body [data-sw-part-start],
+${R} .sw-body [data-sw-part-end] {
+  position: relative;
+}
+${R}[data-sw-part-mode="true"] .sw-body [data-sw-part-start]::before,
+${R}[data-sw-part-mode="true"] .sw-body [data-sw-part-end]::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -0.45em;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--sw-r-accent);
+}
+/* The span between the markers reads tinted, so the selection is visible at a glance. */
+${R}[data-sw-part-mode="true"] .sw-body [data-sw-part-start],
+${R}[data-sw-part-mode="true"] .sw-body [data-sw-part-end] {
+  background: color-mix(in srgb, var(--sw-r-accent) 6%, transparent);
+}
+/* A click on a pin removes it, and in marker mode clicks place markers instead of a caret. */
+${R}[data-sw-part-mode="true"] .sw-body {
+  cursor: crosshair;
+}
+${R}[data-sw-part-mode="true"] .sw-body [data-sw-part-start],
+${R}[data-sw-part-mode="true"] .sw-body [data-sw-part-end] {
+  cursor: pointer;
+}
+/* The surviving markers of an invalid pair warn with a dashed pin. */
+${R}[data-sw-part-mode="true"][data-sw-part-invalid="true"] .sw-body :is([data-sw-part-start], [data-sw-part-end])::before {
+  background: repeating-linear-gradient(to bottom, var(--sw-r-accent) 0 4px, transparent 4px 7px);
+}
+/* The Rewrite Part preview: the draft between the marker borders reads normally; the surrounding chapter text reads
+   gray. The draft middle (no border of its own) is what follows the start border and does not follow the end border. */
+${R}[data-sw-part-preview="true"] .sw-body > * {
+  color: var(--sw-r-muted);
+}
+${R}[data-sw-part-preview="true"] .sw-body > [data-sw-part-start],
+${R}[data-sw-part-preview="true"] .sw-body > [data-sw-part-end],
+${R}[data-sw-part-preview="true"] .sw-body > [data-sw-part-start] ~ :not([data-sw-part-end] ~ *) {
+  color: inherit;
+}
+
 /* ── Title page ── */
 ${R} .sw-title-page {
   display: flex;

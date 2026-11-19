@@ -1,8 +1,11 @@
 # Story Writer release notes
 
-## 0.4.0 — 2026-11-17
+## 0.4.0 — 2026-11-19
 
-- **Redo** appears next to **Rewrite the last chapter** after the model writes something. It takes back only what the model just wrote and writes it again with the same instruction, so you no longer have to select and delete a refusal or a cut-off answer by hand. It works after **Write**, **Continue**, a quick reply and **Rewrite**. If **Clear after the next chapter** emptied your author's note, Redo puts it back. Story Writer asks first. If you change that chapter or its summary, the button goes away and your changes are kept.
+- **Redo** appears beside **Rewrite the last chapter** after the model writes something: it takes back only the last generation and writes it again with the same instruction, instead of you deleting a refusal or a cut-off answer by hand. It works after **Write**, **Continue**, a quick reply and **Rewrite**, restores a cleared author's note, and asks first. Editing the chapter or its summary withdraws it.
+- Rewrite Part rewrites one stretch of a chapter: press the highlighter beside Rewrite and click where the part begins and ends (click a marker to remove it), describe the change and press **Generate rewrite**.
+- The replacement streams into a preview with read-only context on each side; edit it before applying, or stop and try again: nothing changes until **Apply**.
+- Applied rewrites and cancelled drafts land in a per-chapter **Version history**; **Restore** any version, itself recorded. Markers and history survive restarts and are removed with the chapter or a whole-chapter rewrite.
 
 ## 0.3.0 — 2026-11-17
 

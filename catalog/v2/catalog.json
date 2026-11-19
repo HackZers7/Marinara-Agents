@@ -43,10 +43,10 @@
         "restartRequired": false
       },
       "category": "misc",
-      "iconUrl": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artwork/agent-covers/2d-avatars.png",
+      "iconUrl": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artwork/agent-covers/2d-avatars.png",
       "artifact": {
-        "url": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artifacts/2d-avatars-0.1.2.zip",
-        "sha256": "d643d1f6f2a86a6815192580fdb3dce746bd8d7e98d2b260f6477ad167ab0e46",
+        "url": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artifacts/2d-avatars-0.1.2.zip",
+        "sha256": "d67368bc70c8ebe7a6788de19ebcb09753e6536fc7678b21a13d9d132b7ac466",
         "bytes": 2166
       },
       "documentationUrl": "https://github.com/Pasta-Devs/Marinara-Engine/blob/staging/docs/agents/built-in-agents.md#2d-avatars"
@@ -92,10 +92,10 @@
         "restartRequired": false
       },
       "category": "misc",
-      "iconUrl": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artwork/agent-covers/3d-avatars.png",
+      "iconUrl": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artwork/agent-covers/3d-avatars.png",
       "artifact": {
-        "url": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artifacts/3d-avatars-0.1.2.zip",
-        "sha256": "e6a628cf9722768737db5a992b17bca6476fb576d6dff5e73d7a53a57ef3c72c",
+        "url": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artifacts/3d-avatars-0.1.2.zip",
+        "sha256": "dda378fefe2bbcb83426af13fecb3ae88c30290c2efb5b547774d2285ca0ebfe",
         "bytes": 1146
       },
       "documentationUrl": "https://github.com/Pasta-Devs/Marinara-Engine/blob/staging/docs/agents/built-in-agents.md#3d-avatars"
@@ -157,8 +157,8 @@
           },
           {
             "path": "client.js",
-            "sha256": "8059b64370d25254f5fa69b567dcd43094cc13df330cebc7cee9164a221f2bb8",
-            "bytes": 166797
+            "sha256": "f05ec8ca3cb61d7d8e3881395efaa5ffb072a68ca03451fd576b27f3e1021de6",
+            "bytes": 40514
           }
         ],
         "permissions": [
@@ -171,13 +171,13 @@
         "restartRequired": true
       },
       "category": "misc",
-      "iconUrl": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artwork/agent-covers/eightball.png",
+      "iconUrl": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artwork/agent-covers/eightball.png",
       "artifact": {
-        "url": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artifacts/eightball-1.0.7.zip",
-        "sha256": "6c3ad02a682c76bcfe9147b5cd7ad0d22df74bb07a5aad94f3c703a23b0faebe",
-        "bytes": 199699
+        "url": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artifacts/eightball-1.0.7.zip",
+        "sha256": "adc9b573e84ec71d71260dcf324e46fa34caf67c0a72a19378af6f05f56f7753",
+        "bytes": 73415
       },
-      "documentationUrl": "https://github.com/Pasta-Devs/Marinara-Agents#eightball"
+      "documentationUrl": "https://github.com/HackZers7/Marinara-Agents#eightball"
     },
     {
       "manifest": {
@@ -213,10 +213,10 @@
         "restartRequired": false
       },
       "category": "tracker",
-      "iconUrl": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artwork/agent-covers/background.png",
+      "iconUrl": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artwork/agent-covers/background.png",
       "artifact": {
-        "url": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artifacts/background-1.0.3.zip",
-        "sha256": "c81a75a054570afb6fa6abf3da0b1c9570737afafbecb1172e4f0cb2b23f9fe4",
+        "url": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artifacts/background-1.0.3.zip",
+        "sha256": "b23718e993bdc2efcc771d4cf3c6ada73b87ac7760a248b2b0f89b15fe7e9de4",
         "bytes": 1433
       },
       "documentationUrl": "https://github.com/Pasta-Devs/Marinara-Engine/blob/staging/docs/agents/built-in-agents.md#background"
@@ -267,9 +267,9 @@
         "restartRequired": false
       },
       "category": "tracker",
-      "iconUrl": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artwork/agent-covers/beholder.png",
+      "iconUrl": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artwork/agent-covers/beholder.png",
       "artifact": {
-        "url": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artifacts/beholder-1.3.14.zip",
+        "url": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artifacts/beholder-1.3.14.zip",
         "sha256": "9a8dc2a8c73e008f9582bd16a857963df5e23c7caa450a0b8b6712c9cf516b41",
         "bytes": 463638
       },
@@ -344,13 +344,13 @@
         "restartRequired": true
       },
       "category": "misc",
-      "iconUrl": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artwork/agent-covers/blackjack.png",
+      "iconUrl": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artwork/agent-covers/blackjack.png",
       "artifact": {
-        "url": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artifacts/blackjack-1.0.2.zip",
+        "url": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artifacts/blackjack-1.0.2.zip",
         "sha256": "75b093f67c8f441a8ab5e46771ec27c97fa70bf39bc967748209d35da2bda875",
         "bytes": 56710
       },
-      "documentationUrl": "https://github.com/Pasta-Devs/Marinara-Agents#blackjack"
+      "documentationUrl": "https://github.com/HackZers7/Marinara-Agents#blackjack"
     },
     {
       "manifest": {
@@ -400,8 +400,8 @@
           },
           {
             "path": "client.js",
-            "sha256": "e687a23e2ec5b880f92df085b3d2ad75e3a6113b85f5a42b80ea3edb2ffb2b44",
-            "bytes": 170673
+            "sha256": "812ed5db2202b34ceacf2462848a8681d12de173e1fdd29bc612f18485d953b6",
+            "bytes": 170850
           }
         ],
         "permissions": [
@@ -417,13 +417,13 @@
         "restartRequired": true
       },
       "category": "misc",
-      "iconUrl": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artwork/agent-covers/conversation-calls.png",
+      "iconUrl": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artwork/agent-covers/conversation-calls.png",
       "artifact": {
-        "url": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artifacts/conversation-calls-1.1.10.zip",
-        "sha256": "9bc4e5a67aba2c57895d4f5413c75275d5b1d5b9e080c7434f4c8b7f6be1a94d",
-        "bytes": 563809
+        "url": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artifacts/conversation-calls-1.1.10.zip",
+        "sha256": "241ebff4b9db5715a5a8489c221f50fcf009e71c4795a02bc6c1ea5e0400c6b5",
+        "bytes": 563986
       },
-      "documentationUrl": "https://github.com/Pasta-Devs/Marinara-Agents#conversation-calls"
+      "documentationUrl": "https://github.com/HackZers7/Marinara-Agents#conversation-calls"
     },
     {
       "manifest": {
@@ -459,10 +459,10 @@
         "restartRequired": false
       },
       "category": "writer",
-      "iconUrl": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artwork/agent-covers/card-evolution-auditor.png",
+      "iconUrl": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artwork/agent-covers/card-evolution-auditor.png",
       "artifact": {
-        "url": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artifacts/card-evolution-auditor-1.0.4.zip",
-        "sha256": "7f87bbd621c179596302ee77bacc078fdcd5edac10aa80f427e32146b7503e33",
+        "url": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artifacts/card-evolution-auditor-1.0.4.zip",
+        "sha256": "ce8cdcfcc8805de2a69a9cff5ab804a30e6a6b2c28f92af68151f1e6c8522dc7",
         "bytes": 1532
       },
       "documentationUrl": "https://github.com/Pasta-Devs/Marinara-Engine/blob/staging/docs/agents/built-in-agents.md#card-evolution-auditor"
@@ -501,10 +501,10 @@
         "restartRequired": false
       },
       "category": "tracker",
-      "iconUrl": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artwork/agent-covers/character-tracker.png",
+      "iconUrl": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artwork/agent-covers/character-tracker.png",
       "artifact": {
-        "url": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artifacts/character-tracker-1.1.1.zip",
-        "sha256": "828442219565f73063c1addc1af2731d3228270737bd782e7c49b24185775268",
+        "url": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artifacts/character-tracker-1.1.1.zip",
+        "sha256": "7a6e75259cfa1b3f291922d3efc79c14c9dc00e3d0abc77549d3ec4bf78a679b",
         "bytes": 2193
       },
       "documentationUrl": "https://github.com/Pasta-Devs/Marinara-Engine/blob/staging/docs/agents/built-in-agents.md#character-tracker"
@@ -562,8 +562,8 @@
           },
           {
             "path": "client.js",
-            "sha256": "f66aea39e15f279088f61b67f83c38f0620d1d94b60a21bf69257fa82fe32c5c",
-            "bytes": 160618
+            "sha256": "0369f1e6651ae1392644bf0151f60988b805e3a3d1b744b5971338e65ce57bce",
+            "bytes": 32014
           }
         ],
         "permissions": [
@@ -576,13 +576,13 @@
         "restartRequired": true
       },
       "category": "misc",
-      "iconUrl": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artwork/agent-covers/chess.png",
+      "iconUrl": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artwork/agent-covers/chess.png",
       "artifact": {
-        "url": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artifacts/chess-1.0.7.zip",
-        "sha256": "706123c527598ff816a3681bc8dce833e96e3511a5bb39b11127c4f86247103d",
-        "bytes": 211380
+        "url": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artifacts/chess-1.0.7.zip",
+        "sha256": "3c19ceeabe7c965eb03fd0075e22bfc1e91c824fcac27ee4c639166dc3afeb94",
+        "bytes": 82775
       },
-      "documentationUrl": "https://github.com/Pasta-Devs/Marinara-Agents#chess"
+      "documentationUrl": "https://github.com/HackZers7/Marinara-Agents#chess"
     },
     {
       "manifest": {
@@ -618,10 +618,10 @@
         "restartRequired": false
       },
       "category": "misc",
-      "iconUrl": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artwork/agent-covers/combat.png",
+      "iconUrl": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artwork/agent-covers/combat.png",
       "artifact": {
-        "url": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artifacts/combat-1.0.3.zip",
-        "sha256": "9da6690edaa65f3f54e3a16489ef9780085c630008482e33592c7b6c748f2e82",
+        "url": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artifacts/combat-1.0.3.zip",
+        "sha256": "da1c74f36cae257c7f980c35e715da0765ed408b3c4e9001a5ea8884d4951fc0",
         "bytes": 1603
       },
       "documentationUrl": "https://github.com/Pasta-Devs/Marinara-Engine/blob/staging/docs/agents/built-in-agents.md#combat"
@@ -660,10 +660,10 @@
         "restartRequired": false
       },
       "category": "writer",
-      "iconUrl": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artwork/agent-covers/continuity.png",
+      "iconUrl": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artwork/agent-covers/continuity.png",
       "artifact": {
-        "url": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artifacts/continuity-1.0.3.zip",
-        "sha256": "6497e660349e9a9a5b18f1d1c0666d0284f71bdfe8ae2e8a34582b7241b6cdae",
+        "url": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artifacts/continuity-1.0.3.zip",
+        "sha256": "06bf79fb314519090b6181fe1f2f43e62d6253fdb5d22f8b171b682c8c5add79",
         "bytes": 1555
       },
       "documentationUrl": "https://github.com/Pasta-Devs/Marinara-Engine/blob/staging/docs/agents/built-in-agents.md#continuity-checker"
@@ -702,10 +702,10 @@
         "restartRequired": false
       },
       "category": "tracker",
-      "iconUrl": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artwork/agent-covers/custom-tracker.png",
+      "iconUrl": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artwork/agent-covers/custom-tracker.png",
       "artifact": {
-        "url": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artifacts/custom-tracker-1.1.1.zip",
-        "sha256": "9da6be906c6c7fc331e1d307f7203388ab6227c4b05138b71a56a747050740e9",
+        "url": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artifacts/custom-tracker-1.1.1.zip",
+        "sha256": "594b9cbb22862d9226537edb981f1da69035d67f33beca3ce55b2aef6e9549eb",
         "bytes": 1728
       },
       "documentationUrl": "https://github.com/Pasta-Devs/Marinara-Engine/blob/staging/docs/agents/built-in-agents.md#custom-tracker"
@@ -744,10 +744,10 @@
         "restartRequired": false
       },
       "category": "misc",
-      "iconUrl": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artwork/agent-covers/cyoa.png",
+      "iconUrl": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artwork/agent-covers/cyoa.png",
       "artifact": {
-        "url": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artifacts/cyoa-1.0.4.zip",
-        "sha256": "36b11d7ecfff9cb9c2266352381e24a909c6b0163cb5ec3aeffa3784a39a2c86",
+        "url": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artifacts/cyoa-1.0.4.zip",
+        "sha256": "9e6657acdfd2e8c57d9632548cf8755f68c47d31a58b9145abe18ab1a2fc7067",
         "bytes": 1446
       },
       "documentationUrl": "https://github.com/Pasta-Devs/Marinara-Engine/blob/staging/docs/agents/built-in-agents.md#cyoa-choices"
@@ -786,10 +786,10 @@
         "restartRequired": false
       },
       "category": "misc",
-      "iconUrl": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artwork/agent-covers/echo-chamber.png",
+      "iconUrl": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artwork/agent-covers/echo-chamber.png",
       "artifact": {
-        "url": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artifacts/echo-chamber-1.0.2.zip",
-        "sha256": "e78f4d13e6da36deae79dd6d0f6f4396e1bad8c75935b4cb41ffee4189a93520",
+        "url": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artifacts/echo-chamber-1.0.2.zip",
+        "sha256": "4e88370f485e6e69ed62b5d24e655c8df13a6d4cbc9dff98cb3bc917a098e2a5",
         "bytes": 2429
       },
       "documentationUrl": "https://github.com/Pasta-Devs/Marinara-Engine/blob/staging/docs/agents/built-in-agents.md#echo-chamber"
@@ -828,10 +828,10 @@
         "restartRequired": false
       },
       "category": "tracker",
-      "iconUrl": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artwork/agent-covers/expression.png",
+      "iconUrl": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artwork/agent-covers/expression.png",
       "artifact": {
-        "url": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artifacts/expression-1.0.6.zip",
-        "sha256": "eef50911eedf43a9c45afa2f92e2f4f435edaa5a6ee139576b990a33035a08fe",
+        "url": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artifacts/expression-1.0.6.zip",
+        "sha256": "8514ed73147b6d72a7171c9e8f3e88056813979b4b06831c7e3cb413e6b43674",
         "bytes": 1820
       },
       "documentationUrl": "https://github.com/Pasta-Devs/Marinara-Engine/blob/staging/docs/agents/built-in-agents.md#expression-engine"
@@ -2464,13 +2464,13 @@
         ]
       },
       "category": "misc",
-      "iconUrl": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artwork/agent-covers/gacha-forge.png",
+      "iconUrl": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artwork/agent-covers/gacha-forge.png",
       "artifact": {
-        "url": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artifacts/gacha-forge-1.27.7.zip",
+        "url": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artifacts/gacha-forge-1.27.7.zip",
         "sha256": "f278ae4c44a899b943c9ae16176fa99cd9c879043172137949e7b0b340caee7e",
         "bytes": 9194215
       },
-      "documentationUrl": "https://github.com/Pasta-Devs/Marinara-Agents/blob/main/packages/gacha-forge/README.md"
+      "documentationUrl": "https://github.com/HackZers7/Marinara-Agents/blob/main/packages/gacha-forge/README.md"
     },
     {
       "manifest": {
@@ -2506,10 +2506,10 @@
         "restartRequired": false
       },
       "category": "misc",
-      "iconUrl": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artwork/agent-covers/haptic.png",
+      "iconUrl": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artwork/agent-covers/haptic.png",
       "artifact": {
-        "url": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artifacts/haptic-1.0.5.zip",
-        "sha256": "f1049e5beefe1bf08e3cb30de158f70439330477e6e4cc86b3329fe9123b5de5",
+        "url": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artifacts/haptic-1.0.5.zip",
+        "sha256": "112af40b6b2ecf9d1a93d4455b4a7be1fb8fde42b0b8494494edb55fbf989f6f",
         "bytes": 2076
       },
       "documentationUrl": "https://github.com/Pasta-Devs/Marinara-Engine/blob/staging/docs/agents/built-in-agents.md#haptic-feedback"
@@ -2548,10 +2548,10 @@
         "restartRequired": false
       },
       "category": "misc",
-      "iconUrl": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artwork/agent-covers/illustrator.png",
+      "iconUrl": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artwork/agent-covers/illustrator.png",
       "artifact": {
-        "url": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artifacts/illustrator-1.0.4.zip",
-        "sha256": "d9d11c5edc32fb31206b2b43514aaa2c888697f205f1a4a33d19a2facbf3d529",
+        "url": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artifacts/illustrator-1.0.4.zip",
+        "sha256": "bb122eed15591847b42beff2e404a3829304daf6f64104530f1729f4b0837218",
         "bytes": 3173
       },
       "documentationUrl": "https://github.com/Pasta-Devs/Marinara-Engine/blob/staging/docs/agents/built-in-agents.md#illustrator"
@@ -2590,10 +2590,10 @@
         "restartRequired": false
       },
       "category": "misc",
-      "iconUrl": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artwork/agent-covers/html.png",
+      "iconUrl": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artwork/agent-covers/html.png",
       "artifact": {
-        "url": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artifacts/html-1.0.3.zip",
-        "sha256": "3d4ba384cb25e051525d31f352c32f4bd4fa37d299f2b18c3091b78e5f29fbce",
+        "url": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artifacts/html-1.0.3.zip",
+        "sha256": "70c9b795d460fb1e4c8d895dfc9b877db4a7849635a5f3fd65b2304926e681c8",
         "bytes": 1569
       },
       "documentationUrl": "https://github.com/Pasta-Devs/Marinara-Engine/blob/staging/docs/agents/built-in-agents.md#immersive-html"
@@ -2632,10 +2632,10 @@
         "restartRequired": false
       },
       "category": "tracker",
-      "iconUrl": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artwork/agent-covers/inventory-tracker.png",
+      "iconUrl": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artwork/agent-covers/inventory-tracker.png",
       "artifact": {
-        "url": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artifacts/inventory-tracker-1.2.2.zip",
-        "sha256": "b9682cb9adb9a383d0caaa63e2ace4919e66382df4780c5831370e405dff48b9",
+        "url": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artifacts/inventory-tracker-1.2.2.zip",
+        "sha256": "0f8811beeeb5427bb0966c532727c644bcab7eb44497c2f0ee886b3b731c86bc",
         "bytes": 2109
       },
       "documentationUrl": "https://github.com/Pasta-Devs/Marinara-Engine/blob/staging/docs/agents/built-in-agents.md#inventory-tracker"
@@ -2674,10 +2674,10 @@
         "restartRequired": false
       },
       "category": "writer",
-      "iconUrl": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artwork/agent-covers/knowledge-retrieval.png",
+      "iconUrl": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artwork/agent-covers/knowledge-retrieval.png",
       "artifact": {
-        "url": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artifacts/knowledge-retrieval-1.0.4.zip",
-        "sha256": "e0121d6ed27128ca999504cb0ed31e4e2b7557e2dcff7b9446eaeb73735d9e50",
+        "url": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artifacts/knowledge-retrieval-1.0.4.zip",
+        "sha256": "01e5ccecb7c1160e7ffbd30038b5d54bf3cef90829478a0874f006a081732b24",
         "bytes": 1368
       },
       "documentationUrl": "https://github.com/Pasta-Devs/Marinara-Engine/blob/staging/docs/agents/built-in-agents.md#knowledge-retrieval"
@@ -2716,10 +2716,10 @@
         "restartRequired": false
       },
       "category": "writer",
-      "iconUrl": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artwork/agent-covers/knowledge-router.png",
+      "iconUrl": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artwork/agent-covers/knowledge-router.png",
       "artifact": {
-        "url": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artifacts/knowledge-router-1.0.4.zip",
-        "sha256": "49b41722c402c91dbfe776f3e87ec8022de0a4553ea2b421d7191dde72a08921",
+        "url": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artifacts/knowledge-router-1.0.4.zip",
+        "sha256": "bb15d49c991a29bb6a9b84c06af8bebf0d747872013f04260144737a5e784c42",
         "bytes": 1446
       },
       "documentationUrl": "https://github.com/Pasta-Devs/Marinara-Engine/blob/staging/docs/agents/built-in-agents.md#knowledge-router"
@@ -2809,7 +2809,7 @@
           },
           {
             "path": "client.js",
-            "sha256": "8d7be74fa2c5bd9c567de85487a568b3dfec836cbcbd76bceca85a2cf8dffcfc",
+            "sha256": "a95bc7fcc9191dccf0bc399816fcf33373ebd5dbf9a4ab9e7f1826b6d6ae1261",
             "bytes": 1104804
           },
           {
@@ -2964,13 +2964,13 @@
         "restartRequired": true
       },
       "category": "misc",
-      "iconUrl": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artwork/agent-covers/long-term-memory.png",
+      "iconUrl": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artwork/agent-covers/long-term-memory.png",
       "artifact": {
-        "url": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artifacts/long-term-memory-1.6.5.zip",
-        "sha256": "1eb7b076be05f6a896f147e03507950b61cf90ad3dd2da20babaf89835647033",
+        "url": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artifacts/long-term-memory-1.6.5.zip",
+        "sha256": "73952cc17271b8ee150bd00e75cb89bed5b932f5bf3db3e4b8aaac864cee45dd",
         "bytes": 3581237
       },
-      "documentationUrl": "https://github.com/Pasta-Devs/Marinara-Agents#long-term-memory"
+      "documentationUrl": "https://github.com/HackZers7/Marinara-Agents#long-term-memory"
     },
     {
       "manifest": {
@@ -3006,10 +3006,10 @@
         "restartRequired": false
       },
       "category": "misc",
-      "iconUrl": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artwork/agent-covers/lorebook-keeper.png",
+      "iconUrl": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artwork/agent-covers/lorebook-keeper.png",
       "artifact": {
-        "url": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artifacts/lorebook-keeper-1.0.6.zip",
-        "sha256": "22133154155984d5639014709db53609fe4e0240cfe42e3794fd6e262617fe36",
+        "url": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artifacts/lorebook-keeper-1.0.6.zip",
+        "sha256": "9539641d7a9c2e3c42d5c5ea8b24c9c4cff97a7f4de083a7844d44974edd81db",
         "bytes": 2202
       },
       "documentationUrl": "https://github.com/Pasta-Devs/Marinara-Engine/blob/staging/docs/agents/built-in-agents.md#lorebook-keeper"
@@ -3061,8 +3061,8 @@
           },
           {
             "path": "client.js",
-            "sha256": "e2c08f6a23476667ba4882f84590f4246b96aea71ce72dd8d54e2dcd8042c72c",
-            "bytes": 144056
+            "sha256": "dc51cc69812f3cd17b82feb9f2431ab7941447a1a23b2248370eab94832cbedd",
+            "bytes": 147201
           }
         ],
         "permissions": [
@@ -3076,13 +3076,13 @@
         "restartRequired": true
       },
       "category": "tracker",
-      "iconUrl": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artwork/agent-covers/memory-nag.png",
+      "iconUrl": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artwork/agent-covers/memory-nag.png",
       "artifact": {
-        "url": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artifacts/memory-nag-1.2.1.zip",
-        "sha256": "1b26fe893e2d6d8caadd4f3f7c31c73b6e526f2b0cf8f0d42e0102dd4f245c8e",
-        "bytes": 171368
+        "url": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artifacts/memory-nag-1.2.1.zip",
+        "sha256": "0cbcaa930ff150a90568694aac77e215d417bde2fc58203edcad0cd8c77ae5ae",
+        "bytes": 174513
       },
-      "documentationUrl": "https://github.com/Pasta-Devs/Marinara-Agents#memory-nag"
+      "documentationUrl": "https://github.com/HackZers7/Marinara-Agents#memory-nag"
     },
     {
       "manifest": {
@@ -3118,10 +3118,10 @@
         "restartRequired": false
       },
       "category": "misc",
-      "iconUrl": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artwork/agent-covers/spotify.png",
+      "iconUrl": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artwork/agent-covers/spotify.png",
       "artifact": {
-        "url": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artifacts/spotify-1.0.3.zip",
-        "sha256": "be8dec8daeaabc8f533be670632ddd6c677d3ff7447aaf94f42ddf7e697efaaa",
+        "url": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artifacts/spotify-1.0.3.zip",
+        "sha256": "ad1eff39e71b5b19ab80a27ea9a520adcdd2740b862acdefb24e0768963ecb04",
         "bytes": 2611
       },
       "documentationUrl": "https://github.com/Pasta-Devs/Marinara-Engine/blob/staging/docs/agents/built-in-agents.md#music-dj"
@@ -3160,10 +3160,10 @@
         "restartRequired": false
       },
       "category": "writer",
-      "iconUrl": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artwork/agent-covers/director.png",
+      "iconUrl": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artwork/agent-covers/director.png",
       "artifact": {
-        "url": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artifacts/director-1.0.3.zip",
-        "sha256": "3e364ccdad2360f5663bc659c21647372b39463eeae99b81203c82174ccab838",
+        "url": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artifacts/director-1.0.3.zip",
+        "sha256": "2f75f3efbf6a477297b2585aa7b8b0d32d52a12773c386290ef374e542030d92",
         "bytes": 1415
       },
       "documentationUrl": "https://github.com/Pasta-Devs/Marinara-Engine/blob/staging/docs/agents/built-in-agents.md#narrative-director"
@@ -3269,8 +3269,8 @@
           },
           {
             "path": "client.js",
-            "sha256": "f395d52456b5e19af4fcd50949449ab775e165e7150082118bc925e8402fede1",
-            "bytes": 733953
+            "sha256": "cac0ae81f5871023000d1273c4ac292e3ccf66237d0db7d3812acff6393a9c50",
+            "bytes": 734151
           },
           {
             "path": "noodle-klusek.png",
@@ -3289,13 +3289,13 @@
         "restartRequired": true
       },
       "category": "misc",
-      "iconUrl": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artwork/agent-covers/noodle.png",
+      "iconUrl": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artwork/agent-covers/noodle.png",
       "artifact": {
-        "url": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artifacts/noodle-1.5.19.zip",
-        "sha256": "c4745727126d1014f0b74f7d4f27debd5bd84b2deca4427ffb194be59352e9f1",
-        "bytes": 1299959
+        "url": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artifacts/noodle-1.5.19.zip",
+        "sha256": "a3c0e3309e2d9f6d7eb4a7baee39195a2324cdd6db1e09f400653e033361ea3d",
+        "bytes": 1300157
       },
-      "documentationUrl": "https://github.com/Pasta-Devs/Marinara-Agents/blob/main/packages/noodle/README.md"
+      "documentationUrl": "https://github.com/HackZers7/Marinara-Agents/blob/main/packages/noodle/README.md"
     },
     {
       "manifest": {
@@ -3501,13 +3501,13 @@
         "restartRequired": true
       },
       "category": "misc",
-      "iconUrl": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artwork/agent-covers/otome-forge.png",
+      "iconUrl": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artwork/agent-covers/otome-forge.png",
       "artifact": {
-        "url": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artifacts/otome-forge-0.37.0.zip",
+        "url": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artifacts/otome-forge-0.37.0.zip",
         "sha256": "3eb0baa8071b84464e9a682a3fd01eaa4c3d75d07d342ac56b00c19a32e4e13e",
         "bytes": 3306925
       },
-      "documentationUrl": "https://github.com/Pasta-Devs/Marinara-Agents/blob/main/packages/otome-forge/README.md"
+      "documentationUrl": "https://github.com/HackZers7/Marinara-Agents/blob/main/packages/otome-forge/README.md"
     },
     {
       "manifest": {
@@ -3543,10 +3543,10 @@
         "restartRequired": false
       },
       "category": "tracker",
-      "iconUrl": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artwork/agent-covers/persona-stats.png",
+      "iconUrl": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artwork/agent-covers/persona-stats.png",
       "artifact": {
-        "url": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artifacts/persona-stats-1.0.3.zip",
-        "sha256": "cfa8cdc7e69103c1c027daf9938a980cec6dc60e66c5fa1a9dcb55f1472fa07d",
+        "url": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artifacts/persona-stats-1.0.3.zip",
+        "sha256": "4f2f72c358fcb7a2de5f7597f8390e12d2cbce8609bddf7fc61e22762c8f1ff3",
         "bytes": 1603
       },
       "documentationUrl": "https://github.com/Pasta-Devs/Marinara-Engine/blob/staging/docs/agents/built-in-agents.md#persona-stats"
@@ -3606,8 +3606,8 @@
           },
           {
             "path": "client.js",
-            "sha256": "cbdc2e79c26d13fb63ff63a02db00ca5373b5794641a5210929b4e46ca015b1b",
-            "bytes": 163372
+            "sha256": "dac5d86bc289098014a2188a3759fbeb6e1f54d33bd4a2168fdb406ba4639b34",
+            "bytes": 37082
           }
         ],
         "permissions": [
@@ -3620,13 +3620,13 @@
         "restartRequired": true
       },
       "category": "misc",
-      "iconUrl": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artwork/agent-covers/poker.png",
+      "iconUrl": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artwork/agent-covers/poker.png",
       "artifact": {
-        "url": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artifacts/poker-1.0.7.zip",
-        "sha256": "44c520e277a3321a41ca4e2f9616b8431fab379481f6496d68155aee24541f04",
-        "bytes": 189813
+        "url": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artifacts/poker-1.0.7.zip",
+        "sha256": "c252556bef3c58fa891214fcb363421df79ee652c0d820532b63fd4bb3f5e050",
+        "bytes": 63522
       },
-      "documentationUrl": "https://github.com/Pasta-Devs/Marinara-Agents#poker"
+      "documentationUrl": "https://github.com/HackZers7/Marinara-Agents#poker"
     },
     {
       "manifest": {
@@ -3662,10 +3662,10 @@
         "restartRequired": false
       },
       "category": "writer",
-      "iconUrl": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artwork/agent-covers/prose-guardian.png",
+      "iconUrl": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artwork/agent-covers/prose-guardian.png",
       "artifact": {
-        "url": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artifacts/prose-guardian-1.0.3.zip",
-        "sha256": "3cc07250d28a1d902c1f09a00f7007e987f5e5c2bdcbaad3ead0f6ab55d867d9",
+        "url": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artifacts/prose-guardian-1.0.3.zip",
+        "sha256": "d84f44a996ff684753e1470ca78a266e0e866cdbbc739499c3a5a86271b2aca4",
         "bytes": 1517
       },
       "documentationUrl": "https://github.com/Pasta-Devs/Marinara-Engine/blob/staging/docs/agents/built-in-agents.md#prose-guardian"
@@ -3838,10 +3838,10 @@
         "restartRequired": true
       },
       "category": "tracker",
-      "iconUrl": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artwork/agent-covers/quartermaster.png",
-      "documentationUrl": "https://github.com/Pasta-Devs/Marinara-Agents/blob/main/packages/quartermaster/README.md",
+      "iconUrl": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artwork/agent-covers/quartermaster.png",
+      "documentationUrl": "https://github.com/HackZers7/Marinara-Agents/blob/main/packages/quartermaster/README.md",
       "artifact": {
-        "url": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artifacts/quartermaster-0.1.34.zip",
+        "url": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artifacts/quartermaster-0.1.34.zip",
         "sha256": "e1cab4837e77753f088393eef1d4dffbb3ff84a381a0086c895343f70dc2de59",
         "bytes": 566029
       }
@@ -3880,10 +3880,10 @@
         "restartRequired": false
       },
       "category": "tracker",
-      "iconUrl": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artwork/agent-covers/quest.png",
+      "iconUrl": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artwork/agent-covers/quest.png",
       "artifact": {
-        "url": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artifacts/quest-1.0.5.zip",
-        "sha256": "d14d89a105a0f235c7b813366acccbd7049eb3b1ffd5b6815b691ec97225fa8e",
+        "url": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artifacts/quest-1.0.5.zip",
+        "sha256": "2e0cf60284bb58febc8484f2091e8d45b0b423b77a48afd6c3fae3e0e6e45d87",
         "bytes": 3000
       },
       "documentationUrl": "https://github.com/Pasta-Devs/Marinara-Engine/blob/staging/docs/agents/built-in-agents.md#quest-tracker"
@@ -3999,13 +3999,13 @@
         "restartRequired": true
       },
       "category": "tracker",
-      "iconUrl": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artwork/agent-covers/relationship-tracker.png",
+      "iconUrl": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artwork/agent-covers/relationship-tracker.png",
       "artifact": {
-        "url": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artifacts/relationship-tracker-0.7.3.zip",
+        "url": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artifacts/relationship-tracker-0.7.3.zip",
         "sha256": "0bebbceccb3ff3068d99e9a8bc62f9e8302223d2c23b43f73e265a89b0e08dd2",
         "bytes": 255954
       },
-      "documentationUrl": "https://github.com/Pasta-Devs/Marinara-Agents/blob/main/packages/relationship-tracker/README.md"
+      "documentationUrl": "https://github.com/HackZers7/Marinara-Agents/blob/main/packages/relationship-tracker/README.md"
     },
     {
       "manifest": {
@@ -4062,8 +4062,8 @@
           },
           {
             "path": "client.js",
-            "sha256": "2948ac44bcdef943295273c1bc3b034b4d087d6bf1401c7da8c6e7b4f1fee9bf",
-            "bytes": 159704
+            "sha256": "90bb5a52ab120dcb3955c64294e4227646f1208c304344c0d29a97bcee155f45",
+            "bytes": 31225
           }
         ],
         "permissions": [
@@ -4076,13 +4076,13 @@
         "restartRequired": true
       },
       "category": "misc",
-      "iconUrl": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artwork/agent-covers/rock-paper-scissors.png",
+      "iconUrl": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artwork/agent-covers/rock-paper-scissors.png",
       "artifact": {
-        "url": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artifacts/rock-paper-scissors-1.0.7.zip",
-        "sha256": "1b3f2888919164a0a982a61013b93f92e99590c105c1a23037d129fbc48d5ab0",
-        "bytes": 169405
+        "url": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artifacts/rock-paper-scissors-1.0.7.zip",
+        "sha256": "ee5e10edee907ba4d220f74a70589f89955e4695e546661266f9616d46a1b53a",
+        "bytes": 40925
       },
-      "documentationUrl": "https://github.com/Pasta-Devs/Marinara-Agents#rock-paper-scissors"
+      "documentationUrl": "https://github.com/HackZers7/Marinara-Agents#rock-paper-scissors"
     },
     {
       "manifest": {
@@ -4469,13 +4469,13 @@
         "restartRequired": true
       },
       "category": "misc",
-      "iconUrl": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artwork/agent-covers/saucelings.png",
+      "iconUrl": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artwork/agent-covers/saucelings.png",
       "artifact": {
-        "url": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artifacts/saucelings-0.23.2.zip",
+        "url": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artifacts/saucelings-0.23.2.zip",
         "sha256": "1f886bac6b54d5b97c5edef854b246f2f8a071ca50121a9234fb15a555bd24a8",
         "bytes": 824313
       },
-      "documentationUrl": "https://github.com/Pasta-Devs/Marinara-Agents#saucelings"
+      "documentationUrl": "https://github.com/HackZers7/Marinara-Agents#saucelings"
     },
     {
       "manifest": {
@@ -4564,8 +4564,8 @@
           },
           {
             "path": "client.js",
-            "sha256": "dba351e49d82ad6f7513325fa15e2f4729409c59a6c083ff97c5213e04511b84",
-            "bytes": 2919986
+            "sha256": "26058f7a5e78f258396331534998e2cc4c7557d8da9bca3934f60d5ccb5ceae1",
+            "bytes": 2919658
           },
           {
             "path": "slurp2-logo.png",
@@ -4617,13 +4617,13 @@
         "restartRequired": true
       },
       "category": "misc",
-      "iconUrl": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artwork/agent-covers/slurp2.png",
+      "iconUrl": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artwork/agent-covers/slurp2.png",
       "artifact": {
-        "url": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artifacts/slurp2-0.4.28.zip",
-        "sha256": "a7f0a6c7d9a394615201f38c2df2c5f584505e1cb2ac62ec05fbb43a055a62f8",
-        "bytes": 6156530
+        "url": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artifacts/slurp2-0.4.28.zip",
+        "sha256": "054e2df8a0c19d6cdd820faeb14b6db8b7352d4a24f30ac92e294ea296997f5e",
+        "bytes": 6156202
       },
-      "documentationUrl": "https://github.com/Pasta-Devs/Marinara-Agents/blob/main/packages/slurp2/README.md"
+      "documentationUrl": "https://github.com/HackZers7/Marinara-Agents/blob/main/packages/slurp2/README.md"
     },
     {
       "manifest": {
@@ -4680,13 +4680,13 @@
           },
           {
             "path": "server.mjs",
-            "sha256": "b8df69c5523aa01bcccb70e9f9c47a5734d05ec35cad362f11b86b68c8a3afd9",
-            "bytes": 14140
+            "sha256": "ebc9536c99d51843da59ed12e30174c1460054f95030bb539c498688e5b95ced",
+            "bytes": 16260
           },
           {
             "path": "client.js",
-            "sha256": "17d72288934a66b2909e7b07eb9d8ba81352ec710caca7aa0ab4880d043bb4ee",
-            "bytes": 241913
+            "sha256": "9f562975e6ee37eab66510918bb35709a825db28da62ac247f49b1c95da8878f",
+            "bytes": 272712
           },
           {
             "path": "story-writer-icon.png",
@@ -4722,13 +4722,13 @@
         "restartRequired": true
       },
       "category": "misc",
-      "iconUrl": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artwork/agent-covers/story-writer.png",
+      "iconUrl": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artwork/agent-covers/story-writer.png",
       "artifact": {
-        "url": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artifacts/story-writer-0.4.0.zip",
-        "sha256": "1c17b22f5a8165532e4e950b9d676bef43011a04777784c35f78804d109d4efc",
-        "bytes": 646377
+        "url": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artifacts/story-writer-0.4.0.zip",
+        "sha256": "3d515769fba90414c5330f71a134d2efd6eaeb0ae37aa4650b4c6f02af012929",
+        "bytes": 679296
       },
-      "documentationUrl": "https://github.com/Pasta-Devs/Marinara-Agents/blob/main/packages/story-writer/README.md"
+      "documentationUrl": "https://github.com/HackZers7/Marinara-Agents/blob/main/packages/story-writer/README.md"
     },
     {
       "manifest": {
@@ -4764,10 +4764,10 @@
         "restartRequired": false
       },
       "category": "misc",
-      "iconUrl": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artwork/agent-covers/storyboard.png",
+      "iconUrl": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artwork/agent-covers/storyboard.png",
       "artifact": {
-        "url": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artifacts/storyboard-1.1.6.zip",
-        "sha256": "126c32600cb3d98101f01e2d74a358f47250bb11b1403f5be79cadc07247f6f6",
+        "url": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artifacts/storyboard-1.1.6.zip",
+        "sha256": "d24c2e399b64043f3f535c2e1a85b325987f46e9b8f8bc6873e21e502389b040",
         "bytes": 17718
       },
       "documentationUrl": "https://github.com/Pasta-Devs/Marinara-Engine/blob/staging/docs/agents/built-in-agents.md#storyboard"
@@ -4828,8 +4828,8 @@
           },
           {
             "path": "client.js",
-            "sha256": "11658a603cd305bb463df00012f37869c50123f7825602234b32f474850eac53",
-            "bytes": 155604
+            "sha256": "da89fbdec57b9d5775e7afd7e1c314a4886342f1a28ab009f7c72ab32ff61ccc",
+            "bytes": 27160
           }
         ],
         "permissions": [
@@ -4842,13 +4842,13 @@
         "restartRequired": true
       },
       "category": "misc",
-      "iconUrl": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artwork/agent-covers/tic-tac-toe.png",
+      "iconUrl": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artwork/agent-covers/tic-tac-toe.png",
       "artifact": {
-        "url": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artifacts/tic-tac-toe-1.0.7.zip",
-        "sha256": "f8828f1ec82126fa31e9571ecfad1b66b600e88cf447a1a294d479f56ccc934b",
-        "bytes": 165195
+        "url": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artifacts/tic-tac-toe-1.0.7.zip",
+        "sha256": "5e3591fb74e66bafa0291fb4af51894e7704b09bf7b3ac59443cce32b7dcfdc7",
+        "bytes": 36750
       },
-      "documentationUrl": "https://github.com/Pasta-Devs/Marinara-Agents#tic-tac-toe"
+      "documentationUrl": "https://github.com/HackZers7/Marinara-Agents#tic-tac-toe"
     },
     {
       "manifest": {
@@ -4903,8 +4903,8 @@
           },
           {
             "path": "client.js",
-            "sha256": "680eb2fa1693543c7781b43434305d6523cd8b4728a5f2c6fc9bba34a5af7f46",
-            "bytes": 161890
+            "sha256": "d33ad24feb7b5eb81fc66a309ce76cf078014d5bda2c744bc187793a79bb3b86",
+            "bytes": 36513
           }
         ],
         "permissions": [
@@ -4917,13 +4917,13 @@
         "restartRequired": true
       },
       "category": "misc",
-      "iconUrl": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artwork/agent-covers/uno.png",
+      "iconUrl": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artwork/agent-covers/uno.png",
       "artifact": {
-        "url": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artifacts/uno-1.0.7.zip",
-        "sha256": "61c5b93fab25c12cfa696661dab48154362bf4d4ad6fd85227bb8e8471ca75fa",
-        "bytes": 188395
+        "url": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artifacts/uno-1.0.7.zip",
+        "sha256": "f7c849d2b817141d30e80c2897872b42f475e6fb3004efb115f861e36d120ac5",
+        "bytes": 63017
       },
-      "documentationUrl": "https://github.com/Pasta-Devs/Marinara-Agents#uno"
+      "documentationUrl": "https://github.com/HackZers7/Marinara-Agents#uno"
     },
     {
       "manifest": {
@@ -4995,13 +4995,13 @@
         "restartRequired": true
       },
       "category": "misc",
-      "iconUrl": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artwork/agent-covers/wordle.png",
+      "iconUrl": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artwork/agent-covers/wordle.png",
       "artifact": {
-        "url": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artifacts/wordle-1.1.1.zip",
+        "url": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artifacts/wordle-1.1.1.zip",
         "sha256": "5c59c8122abc6a015516c801f043d300767e3b958bfb928deb36601e60dbd2b7",
         "bytes": 102489
       },
-      "documentationUrl": "https://github.com/Pasta-Devs/Marinara-Agents#wordle"
+      "documentationUrl": "https://github.com/HackZers7/Marinara-Agents#wordle"
     },
     {
       "manifest": {
@@ -5074,9 +5074,9 @@
         "restartRequired": true
       },
       "category": "tracker",
-      "iconUrl": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artwork/agent-covers/hierarchical-maps.png",
+      "iconUrl": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artwork/agent-covers/hierarchical-maps.png",
       "artifact": {
-        "url": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artifacts/hierarchical-maps-1.8.1.zip",
+        "url": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artifacts/hierarchical-maps-1.8.1.zip",
         "sha256": "7439a62f0a6d3e26af50bba9967dec910f3955d63e1d39679833652ba463b7cd",
         "bytes": 585067
       },
@@ -5116,10 +5116,10 @@
         "restartRequired": false
       },
       "category": "tracker",
-      "iconUrl": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artwork/agent-covers/world-state.png",
+      "iconUrl": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artwork/agent-covers/world-state.png",
       "artifact": {
-        "url": "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artifacts/world-state-1.1.0.zip",
-        "sha256": "bedf93879675900da43eedf85320898788fd54920342070ba8dba6b24e339f49",
+        "url": "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artifacts/world-state-1.1.0.zip",
+        "sha256": "9de594a4441c116a37498cf4a4417f372a5b52eb15b4f47f13e48dff37715c3b",
         "bytes": 2004
       },
       "documentationUrl": "https://github.com/Pasta-Devs/Marinara-Engine/blob/staging/docs/agents/built-in-agents.md#world-state"
