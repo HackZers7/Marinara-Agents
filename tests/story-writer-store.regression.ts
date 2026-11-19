@@ -581,6 +581,26 @@ test("part history: clearPartHistory empties the list for a fresh whole-chapter 
   assert.deepEqual(await store.clearPartHistory(story.id, chapterId), []);
 });
 
+test("part history: a whole-chapter rewrite clears the rewritten chapter's history, not the pair chapter's", async () => {
+  const { store } = setup();
+  const { story } = await store.createStory();
+  // The marker pair sits in the earlier chapter; the destructive rewrite replaces the LAST one.
+  const pairId = "chapter-pair-00001";
+  const lastId = "chapter-last-00001";
+  await store.createChapter(story.id, { id: pairId, text: "The earlier chapter, holding the markers." });
+  await store.createChapter(story.id, { id: lastId, text: "The chapter being rewritten." });
+  await store.appendPartHistoryEntry(story.id, pairId, { textBefore: "a", textAfter: "b", applied: true });
+  await store.appendPartHistoryEntry(story.id, lastId, { textBefore: "c", textAfter: "d", applied: true });
+
+  // The rewrite starts the rewritten chapter's history over; the pair chapter's versions stay untouched.
+  await store.clearPartHistory(story.id, lastId);
+  assert.deepEqual(await store.listPartHistory(story.id, lastId), []);
+  assert.deepEqual(
+    (await store.listPartHistory(story.id, pairId)).map((entry) => entry.textAfter),
+    ["b"],
+  );
+});
+
 test("part history: appends to one chapter survive a revision conflict and restart as one document", async () => {
   const memory = memoryPersistence({ transactions: true });
   let tick = 0;

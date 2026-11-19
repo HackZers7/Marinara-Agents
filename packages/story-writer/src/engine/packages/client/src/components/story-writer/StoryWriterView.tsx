@@ -534,8 +534,10 @@ export function StoryWriterView({ capabilityProps }: { capabilityProps: Record<s
       tone: "destructive",
     });
     if (!confirmed) return;
-    // A whole-chapter rewrite destroys the text the span history refers to: its markers and history go with it.
-    if (lastChapter) void partHistory.clear();
+    // A whole-chapter rewrite destroys the LAST chapter's text: its markers and its span history go with it. The
+    // history cleared is the rewritten chapter's — the pair's own chapter may sit somewhere earlier and keeps its
+    // versions (the rewritten text carries no tokens, so the pair dies with the chapter when it lived there).
+    if (lastChapter) void partHistory.clear(lastChapter.id);
     void generation.write("rewrite");
   };
   const deleteChapter = async (chapterId: string) => {
