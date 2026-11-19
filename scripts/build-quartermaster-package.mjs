@@ -40,7 +40,7 @@ const PACKAGE_ID = "quartermaster";
 // release (0.1.0-dev.2 < 0.1.0), so once a plain 0.1.0 is installed, no
 // prerelease build can ever look newer to Download Agents. Never reset the
 // version back down afterward, even across a long dev-iteration stretch.
-const VERSION = "0.1.33";
+const VERSION = "0.1.34";
 // Declared against the exact staging Engine this scaffold was built and tested
 // against. Do not lower this to reach stable users — see CONTRIBUTING.md.
 const ENGINE_MIN = "2.4.6";
@@ -59,7 +59,7 @@ const BASE_DESCRIPTION =
 // default so a normal build stays correct with no flag set.
 const ARTIFACT_BASE_URL =
   process.env.QUARTERMASTER_DEV_ARTIFACT_BASE_URL ||
-  "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artifacts";
+  "https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artifacts";
 
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
 
@@ -288,7 +288,7 @@ catalog.packages.push({
   manifest,
   category: "tracker",
   iconUrl: catalogArtworkUrl(PACKAGE_ID),
-  documentationUrl: "https://github.com/Pasta-Devs/Marinara-Agents/blob/main/packages/quartermaster/README.md",
+  documentationUrl: "https://github.com/HackZers7/Marinara-Agents/blob/main/packages/quartermaster/README.md",
   artifact: {
     url: `${ARTIFACT_BASE_URL}/${basename(artifactPath)}`,
     sha256: sha256(archive),

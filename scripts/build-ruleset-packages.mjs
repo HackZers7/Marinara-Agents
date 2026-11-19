@@ -193,7 +193,7 @@ for (const id of packageIds) {
     await writeFile(packPath, buffer);
     const listing = JSON.parse(buffer.toString("utf8")).package ?? {};
     locales[locale] = {
-      url: `https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artifacts/${packName}`,
+      url: `https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artifacts/${packName}`,
       sha256: sha256(buffer),
       bytes: buffer.byteLength,
       ...(typeof listing.name === "string" ? { name: listing.name } : {}),
@@ -207,7 +207,7 @@ for (const id of packageIds) {
       category: "misc",
       iconUrl: catalogArtworkUrl(id),
       artifact: {
-        url: `https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artifacts/${artifactName}`,
+        url: `https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artifacts/${artifactName}`,
         sha256: sha256(archive),
         bytes: archive.byteLength,
       },

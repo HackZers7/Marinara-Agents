@@ -11,7 +11,8 @@
 // only saved audio settings generate music (an unsaved Mute or music level never does), an unsaved Mute stays silent
 // when a cue's track lands, and a recorded track the Engine no longer lists is made again while stock music plays.
 // Run: node scripts/run-package-browser-tests.mjs otome-forge tests/package-otome-forge-presentation.e2e.ts
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expectCustomLimitFits } from "./fixtures/otome-forge-limits.ts";
+import { expect, test, type Locator, type Page } from "./fixtures/package-browser.ts";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { normalizeBible } from "../packages/otome-forge/src/engine/packages/server/src/services/otome-forge/schemas/unit";
@@ -668,6 +669,41 @@ for (const theme of ["dark", "light"] as const) {
     expect(posts(calls, "/intimacy")).toEqual([]);
   });
 
+  test(`Otome Hearth Settings → Content: your own limits take Allow, Veil or Line on one row (${theme})`, async ({
+    page,
+  }, testInfo) => {
+    const fixture = intimacyFixture();
+    // A story saved by an earlier version: its own limit loads as it was.
+    fixture.view.world.content.custom = [{ text: "spiders", level: "veil" }];
+    const calls: Call[] = [];
+    await page.emulateMedia({ reducedMotion: "reduce", colorScheme: theme });
+    await stubRoutes(page, fixture.answer, calls);
+    const root = await openRepaintCast(page);
+    await root.getByRole("button", { name: "Settings", exact: true }).click();
+    await root.getByRole("tab", { name: "Content", exact: true }).click();
+    await expect(root).toHaveAttribute("data-look", theme === "dark" ? "midnight" : "pearl");
+    await expect(root.getByRole("textbox", { name: "Your limit 1", exact: true })).toHaveValue("spiders");
+    const first = root.getByRole("group", { name: "Level of your limit 1", exact: true });
+    await expect(first.locator(".of-pill")).toHaveText(["Allow", "Veil", "Line"]);
+    await expect(first.getByRole("radio", { name: "Veil", exact: true })).toBeChecked();
+    await root.getByRole("button", { name: "Add your own", exact: true }).click();
+    await root.getByRole("textbox", { name: "Your limit 2", exact: true }).fill("Infidelity");
+    const second = root.getByRole("group", { name: "Level of your limit 2", exact: true });
+    await expect(second.getByRole("radio", { name: "Line", exact: true })).toBeChecked();
+    await second.getByText("Allow", { exact: true }).click();
+    await expect(second.getByRole("radio", { name: "Allow", exact: true })).toBeChecked();
+    const save = root.getByRole("button", { name: "Save changes", exact: true });
+    await save.click();
+    await expect(save).toBeDisabled();
+    expect(posts(calls, "/settings").at(-1)!.body!.content.custom).toEqual([
+      { text: "spiders", level: "veil" },
+      { text: "Infidelity", level: "allow" },
+    ]);
+    await expectCustomLimitFits(page, root.locator(".of-custom-limit").nth(1), (name) =>
+      testInfo.outputPath(`settings-${theme}-${name}`),
+    );
+  });
+
   test(`Otome Hearth intimacy: an older bible gains its block from the cast, retried after a failure (${theme})`, async ({
     page,
   }, testInfo) => {
@@ -967,7 +1003,9 @@ test("Otome Forge arcs: a rupture's banner plans the repair, routes open, wait o
   const sora = routes.getByRole("listitem").filter({ hasText: "Sora" });
   await expect(sora).toContainText("Affection 3 · her next chapter");
   await expect(sora).toContainText("Opens at affection 3 · now 1");
-  await expect(sora.getByRole("button")).toHaveCount(0);
+  // A route that waits offers no chapter to open; its only button is "I'm upset with her" (#2156), beside every route.
+  await expect(sora.getByRole("button")).toHaveCount(1);
+  await expect(sora.getByRole("button", { name: "I’m upset with her" })).toBeVisible();
   const cassian = routes.getByRole("listitem").filter({ hasText: "Cassian" });
   await expect(cassian).toContainText("Stage 2 · Crack");
   await expect(cassian).toContainText("Next: Pull");
@@ -1628,6 +1666,19 @@ test("Otome Hearth imageless play: full visual descriptions keep reading control
   await expect(descriptionText).toBeFocused();
   await page.keyboard.press("PageDown");
   await expect.poll(() => descriptionText.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+  // Let PageDown's smooth scroll settle first: an End pressed while it still runs is dropped on a slow runner (#2341,
+  // CI stopped 310 px short). The same frame's scrollTop twice in a row means it has.
+  await expect
+    .poll(() =>
+      descriptionText.evaluate(
+        (element) =>
+          new Promise<boolean>((resolve) => {
+            const before = element.scrollTop;
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve(element.scrollTop === before)));
+          }),
+      ),
+    )
+    .toBe(true);
   await page.keyboard.press("End");
   await expect
     .poll(() => descriptionText.evaluate((element) => element.scrollHeight - element.clientHeight - element.scrollTop))
@@ -3742,10 +3793,10 @@ test("Otome Hearth affection shows per-level progress below Level beside its hea
   ).toEqual([]);
 });
 
-/** The story so far (#2040), as GET /runs/:run/memory/overview serves it. */
+/** The story so far (#2040), as GET /runs/:run/memory/overview serves it: never shown here, where no arc is planned. */
 const SO_FAR = ["Marin taught you to read the tide tables.", "You kept the lighthouse key he left on the sill."];
 
-test("Otome Hearth shows prestige past level 10 and writes an unlocked extra story on its tap (#2025)", async ({
+test("Otome Hearth shows prestige at the last bond rank and writes an unlocked extra story on its tap (#2025)", async ({
   page,
   isMobile,
 }, testInfo) => {
@@ -3760,9 +3811,20 @@ test("Otome Hearth shows prestige past level 10 and writes an unlocked extra sto
     ...lis[2]!,
     id: MARIN,
     name: "Marin",
-    level: 10,
-    affectionProgress: { current: 300, required: 300 },
+    // 0.23.0: prestige opens at the last bond rank (20), the ten bond stories played, never at level 10.
+    level: 20,
+    bond: { level: 20, name: "always", played: 10, next: null },
+    affectionProgress: { current: 1100, required: 1100 },
     prestige: { unlocked: 1, points: 2, current: 120, required: 300 },
+  });
+  // A love interest past his finale, at the first bond rank: the ladder is under way and no prestige row yet.
+  lis.push({
+    ...lis[2]!,
+    id: "li-mid-0006",
+    name: "Ren",
+    level: 11,
+    bond: { level: 11, name: "named", played: 0, next: 11 },
+    affectionProgress: { current: 0, required: 650 },
   });
   const key = `prestige-${MARIN}-1`;
   let release!: () => void;
@@ -3777,7 +3839,14 @@ test("Otome Hearth shows prestige past level 10 and writes an unlocked extra sto
     }
     const reply = fixture.answer(call);
     if (call.method === "GET" && call.path === `/api/otome-forge/runs/${RUN}/story` && reply?.json) {
-      return { ...reply, json: { ...(reply.json as Json), prestige: [{ li: MARIN, key }] } };
+      return {
+        ...reply,
+        json: {
+          ...(reply.json as Json),
+          prestige: [{ li: MARIN, key }],
+          bond: [{ li: "li-mid-0006", key: "bond-li-mid-0006-11", rank: 11, name: "named" }],
+        },
+      };
     }
     return reply;
   };
@@ -3794,7 +3863,48 @@ test("Otome Hearth shows prestige past level 10 and writes an unlocked extra sto
   await expect(row.getByRole("meter", { name: "Marin: affection progress", exact: true })).toHaveCount(0);
   await expect(row.getByRole("img", { name: "Marin: prestige 2 of 3", exact: true })).toBeVisible();
   await expect(
-    section.getByText("Past level 10, every 300 affection earns a prestige point.", { exact: false }),
+    row.getByRole("img", { name: "Marin: affection level 10 of 10, bond rank 10 of 10", exact: true }),
+  ).toBeVisible();
+  await expect(
+    section.getByText("Past the last bond rank, every 300 affection earns a prestige point.", { exact: false }),
+  ).toBeVisible();
+  // The bond ladder is under way at rank 11: no prestige row yet, and the level text names the rank.
+  const mid = section.getByRole("listitem").filter({ hasText: "Ren" });
+  await expect(mid.locator(".of-prestige")).toHaveCount(0);
+  await expect(mid.getByRole("meter", { name: "Ren: affection progress", exact: true })).toHaveText("0 / 650");
+  await expect(mid.locator(".of-affection-level")).toHaveText("Level 10 · named");
+  // His "Open named" sits in a row of its own under his hearts and leaves the row lined up with the others: his name
+  // where theirs starts, his hearts as wide and as many lines as Marin's, who also has a counter and no button
+  // (2026-11-17: the button took the picture's column and squeezed the hearts into three rows).
+  const open = mid.getByRole("button", { name: "Open named", exact: true });
+  await expect(open).toBeVisible();
+  const [openBox, midHearts, midName, marinHearts, marinName] = await Promise.all([
+    open.boundingBox(),
+    mid.locator(".of-hearts").boundingBox(),
+    mid.locator(".of-affection-name").boundingBox(),
+    row.locator(".of-hearts").boundingBox(),
+    row.locator(".of-affection-name").boundingBox(),
+  ]);
+  expect(openBox!.y).toBeGreaterThanOrEqual(midHearts!.y + midHearts!.height);
+  expect(Math.abs(openBox!.x - midHearts!.x)).toBeLessThanOrEqual(1);
+  expect(Math.abs(midName!.x - marinName!.x)).toBeLessThanOrEqual(1);
+  // One line each; a narrow column may draw them a little smaller than 16px, so the heights match within 2px.
+  expect(Math.abs(midHearts!.height - marinHearts!.height)).toBeLessThanOrEqual(2);
+  // Ten hearts stay on one line, at any text size and in a narrow column (2026-11-17: the last one wrapped).
+  const heartLines = (li: Locator) =>
+    li
+      .locator(".of-heart")
+      .evaluateAll((hearts) => new Set(hearts.map((heart) => Math.round(heart.getBoundingClientRect().top))).size);
+  for (const size of ["17px", "26px"]) {
+    await page.evaluate((px) => (document.documentElement.style.fontSize = px), size);
+    for (const li of [mid, row]) await expect.poll(() => heartLines(li)).toBe(1);
+  }
+  await mid.evaluate((li) => ((li as HTMLElement).style.width = "240px"));
+  await expect.poll(() => heartLines(mid)).toBe(1);
+  await mid.evaluate((li) => ((li as HTMLElement).style.width = ""));
+  await page.evaluate(() => (document.documentElement.style.fontSize = "17px"));
+  await expect(
+    mid.getByRole("img", { name: "Ren: affection level 10 of 10, bond rank 1 of 10", exact: true }),
   ).toBeVisible();
   const other = section.getByRole("listitem").filter({ hasText: lis[0]!.name });
   await expect(other.locator(".of-prestige")).toHaveCount(0);
@@ -3809,13 +3919,15 @@ test("Otome Hearth shows prestige past level 10 and writes an unlocked extra sto
   await row.getByRole("button", { name: "A new story with Marin", exact: true }).click();
   const dialog = root.getByRole("dialog", { name: "A new story with Marin", exact: true });
   await expect(dialog.getByText("Imagining something new with Marin…", { exact: true })).toBeVisible();
-  // What happened so far… (#2040) in the planning dialog every route, repair and extra story shares; Cancel keeps focus.
-  const soFar = dialog.getByRole("region", { name: "What happened so far…", exact: true });
-  await expect(soFar.locator("p")).toHaveText(SO_FAR);
+  // The personality quiz (#2174) in the planning dialog every route, repair and extra story shares (the story so far
+  // waits for an arc); Cancel keeps focus.
+  const play = dialog.getByRole("button", { name: "Play the personality quiz", exact: true });
+  await expect(play).toBeVisible();
+  await expect(dialog.getByRole("region", { name: "What happened so far…", exact: true })).toHaveCount(0);
   await expect(dialog.getByRole("button", { name: "Cancel", exact: true })).toBeFocused();
   release();
   await expect(dialog.getByRole("alert")).toContainText("No new story with Marin is unlocked yet.");
-  await expect(soFar).toHaveCount(0);
+  await expect(play).toHaveCount(0);
   expect(posts(calls, `/prestige/${MARIN}`)).toHaveLength(1);
 });
 

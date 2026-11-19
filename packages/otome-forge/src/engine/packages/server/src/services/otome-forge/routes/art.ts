@@ -5,8 +5,11 @@
 //                                                            each love interest's ready faces (the reader polls it
 //                                                            while something is painting); in his 5★ look's
 //                                                            first-wear scene, him in that look (`looks`), and
-//                                                            `lookComing` while that look paints or is cut out
+//                                                            `lookComing` while that look paints or is cut out;
+//                                                            0.20.0: its recurring side speakers' sprites (`sides`)
 // POST /runs/:run/art/place {place, prompt?, negativePrompt?} → {place, world}; paints that place now (the tap)
+// POST /runs/:run/art/place/background {place, url}        → {place, world}; #2147: a background from the Engine's
+//                                                            library as that place's picture, painting nothing
 // POST /runs/:run/art/place/prompt {place}                 → {prompt, negativePrompt}; for the prompt review dialog
 // POST /runs/:run/art/cg {key, i, prompt?, negativePrompt?}  → {art}; paints that beat's CG now (the tap)
 // POST /runs/:run/art/cg/prompt {key, i}                   → {prompt, negativePrompt}
@@ -15,6 +18,13 @@
 //                                                            protagonist's five stickers start (#2044, once)
 // POST /runs/:run/art/sticker {sticker, prompt?, negativePrompt?} → {art}; paints that sticker now (the tap)
 // POST /runs/:run/art/sticker/prompt {sticker}             → {prompt, negativePrompt}
+// POST /runs/:run/art/kitten {owner, repaint?, prompt?, negativePrompt?} → {art}; 0.35.0: paints that Kitty Cards
+//                                                            kitten now (`player` or a love interest's id,
+//                                                            S/art/kittens.ts); 0.36.0: `repaint`, the Album's
+//                                                            Repaint, paints a painted one again
+// POST /runs/:run/art/kitten/prompt {owner}                → {prompt, negativePrompt}
+// POST /runs/:run/art/side {key, prompt?, negativePrompt?}  → {art}; 0.20.0: paints that side character's sprite now
+// POST /runs/:run/art/side/prompt {key}                    → {prompt, negativePrompt} (S/art/side-sprites.ts)
 // A tap is the consent Ask before painting waits for, and the Retry for a failed or stopped paint: it waits for the
 // paint and answers with the record as left (`ready`, or `failed` with Retry). A tap on a ready image changes nothing,
 // and a second tap while one paints waits for that same paint, so no tap pays twice. An edited prompt keeps its
@@ -35,8 +45,10 @@ import { cutoutsPending, queueCutouts } from "../art/cutout.js";
 import { cgPromptFor, cgView, markCgSeen, paintCgNow } from "../art/cg.js";
 import { itemArtView, outfitOf } from "../art/outfits.js";
 import { paintStickerNow, startPlayerStickers, stickerPromptFor } from "../art/stickers.js";
+import { kittenPromptFor, paintKittenNow } from "../art/kittens.js";
 import { STICKER_ID } from "../../../../../client/src/features/otome-forge/shared/stickers.js";
-import { paintPlaceNow, placePromptFor, readPlace, withPlaceViews } from "../art/places.js";
+import { chooseBackground, paintPlaceNow, placePromptFor, readPlace, withPlaceViews } from "../art/places.js";
+import { paintSideNow, sidePromptFor } from "../art/side-sprites.js";
 import { OtomeForgeError, debugModeOf, parseBody, runParam, type OtomeRequest, type RegisterRoutes } from "../http.js";
 import { isChapterKey, isItemStoryKey } from "../ids.js";
 import { readItem } from "../items/open.js";
@@ -44,6 +56,8 @@ import { cleanedFaces, facesComing, readRun, readyCutout, stageArtUrls } from ".
 import { toWorldView } from "../schemas/world.js";
 import type { OtomeStore } from "../store.js";
 import { readBeat } from "../story/canon.js";
+import { sceneSides } from "../story/side-cast.js";
+import { SIDE_NAME_MAX } from "../schemas/side-cast.js";
 
 const PROMPT_MAX = 4000;
 const BEAT_MAX = 99;
@@ -54,15 +68,23 @@ const Edited = {
 };
 const PlaceBody = z.object({ place: z.string().min(1).max(120), ...Edited });
 const PlacePromptBody = z.object({ place: z.string().min(1).max(120) });
+const BackgroundBody = z.object({ place: z.string().min(1).max(120), url: z.string().min(1).max(2000) });
 const BeatRef = { key: z.string().min(1).max(120), i: z.number().int().min(0).max(BEAT_MAX) };
 const CgBody = z.object({ ...BeatRef, ...Edited });
 const CgRefBody = z.object(BeatRef);
 const StickerRef = { sticker: z.string().regex(STICKER_ID) };
 const StickerBody = z.object({ ...StickerRef, ...Edited });
 const StickerRefBody = z.object(StickerRef);
+// A love interest's id is at most 80 characters, as every other route reads it; one owed no kitten is a 404.
+const KittenRef = { owner: z.string().min(1).max(80) };
+const KittenBody = z.object({ ...KittenRef, repaint: z.boolean().optional(), ...Edited });
+const KittenRefBody = z.object(KittenRef);
+const SideRef = { key: z.string().min(1).max(SIDE_NAME_MAX) };
+const SideBody = z.object({ ...SideRef, ...Edited });
+const SideRefBody = z.object(SideRef);
 const NoFields = z.object({});
 
-const runNotFound = () => new OtomeForgeError(404, "No such Otome Forge run.", "not-found");
+const runNotFound = () => new OtomeForgeError(404, "No such Otome Hearth story.", "not-found");
 
 /** A beat named by `key` and `i`, or a 404 (a malformed one names no beat). */
 function beatRef(key: unknown, i: unknown): { key: string; i: number } {
@@ -125,6 +147,7 @@ export const registerArtRoutes: RegisterRoutes = (router, deps) => {
       const lookComing =
         (!!item && !painted && itemArtView(runId, item)?.state === "pending") ||
         units.some((unit) => !!looks[unit.id] && cutoutsPending(runId, [unit]));
+      const sides = await sceneSides(deps, runId, run, beat);
       const scene: SceneArt = {
         places: beat.places.map((place) => readPlace(run.world, runId, place.name) ?? place),
         cg: cgView(runId, beat),
@@ -135,6 +158,7 @@ export const registerArtRoutes: RegisterRoutes = (router, deps) => {
           .map((unit) => unit.id),
         ...(Object.keys(looks).length ? { looks } : {}),
         ...(lookComing ? { lookComing } : {}),
+        ...(sides ? { sides } : {}),
       };
       return scene;
     }),
@@ -152,6 +176,18 @@ export const registerArtRoutes: RegisterRoutes = (router, deps) => {
       const run = await readRun(store, runId);
       if (!run) throw runNotFound();
       return { place: painted, world: toWorldView(withPlaceViews(runId, run.world)) };
+    }),
+  );
+
+  router.post(
+    "/runs/:run/art/place/background",
+    handle(async (request) => {
+      const { place, url } = parseBody(BackgroundBody, request.body);
+      const { runId } = runParam(request);
+      const chosen = await chooseBackground(deps, runId, place, url);
+      const run = await readRun(store, runId);
+      if (!run) throw runNotFound();
+      return { place: chosen, world: toWorldView(withPlaceViews(runId, run.world)) };
     }),
   );
 
@@ -217,6 +253,50 @@ export const registerArtRoutes: RegisterRoutes = (router, deps) => {
     handle(async (request) => {
       const { sticker } = parseBody(StickerRefBody, request.body);
       const { prompt, negativePrompt } = await stickerPromptFor(deps, runParam(request).runId, sticker);
+      return { prompt, negativePrompt };
+    }),
+  );
+
+  router.post(
+    "/runs/:run/art/kitten",
+    handle(async (request) => {
+      const body = parseBody(KittenBody, request.body);
+      const art = await paintKittenNow(deps, runParam(request).runId, body.owner, {
+        debugMode: debugModeOf(request),
+        edited: { prompt: body.prompt, negativePrompt: body.negativePrompt },
+        active: deps.art?.active,
+        repaint: body.repaint === true,
+      });
+      return { art };
+    }),
+  );
+
+  router.post(
+    "/runs/:run/art/kitten/prompt",
+    handle(async (request) => {
+      const { owner } = parseBody(KittenRefBody, request.body);
+      const { prompt, negativePrompt } = await kittenPromptFor(deps, runParam(request).runId, owner);
+      return { prompt, negativePrompt };
+    }),
+  );
+
+  router.post(
+    "/runs/:run/art/side",
+    handle(async (request) => {
+      const body = parseBody(SideBody, request.body);
+      const art = await paintSideNow(deps, runParam(request).runId, body.key, {
+        debugMode: debugModeOf(request),
+        edited: { prompt: body.prompt, negativePrompt: body.negativePrompt },
+      });
+      return { art };
+    }),
+  );
+
+  router.post(
+    "/runs/:run/art/side/prompt",
+    handle(async (request) => {
+      const { key } = parseBody(SideRefBody, request.body);
+      const { prompt, negativePrompt } = await sidePromptFor(deps, runParam(request).runId, key);
       return { prompt, negativePrompt };
     }),
   );

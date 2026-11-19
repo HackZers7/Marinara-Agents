@@ -15,6 +15,7 @@ import type {
   ConfrontationView,
   ForgeChoice,
   Grant,
+  HapticCue,
   LiId,
   OtomeErrorCode,
   Paint,
@@ -129,6 +130,19 @@ export function lineRef(timeline: Timeline, index: number, base: string): string
   return `${base}/${line.main}${own}`;
 }
 
+/**
+ * 0.34.0: what the toys do at line `index`: the newest line up to it that carries haptic cues, by its index (null before
+ * the first, and from a line of stops on). A line's cues replace every cue before it, and each beat starts still.
+ */
+export function hapticAt(timeline: Timeline, index: number): { index: number; cues: HapticCue[] } | null {
+  for (let at = Math.min(index, timeline.lines.length - 1); at >= 0; at -= 1) {
+    const cues = timeline.lines[at]!.segment.haptic;
+    if (!cues?.length) continue;
+    return cues.some((cue) => cue.action !== "stop") ? { index: at, cues } : null;
+  }
+  return null;
+}
+
 /** The choice id a Confrontation round's stances are offered under. */
 export const stanceChoiceId = (round: number) => `round-${round}`;
 
@@ -175,6 +189,29 @@ export function readerBeat(response: BeatResponse): { beat: BeatView; confrontat
   throw new Error("The beat route answered without a beat");
 }
 
+/**
+ * Whether the beat's key image is on screen at line `index`: from its own line (`at`) until the first later line that
+ * moves the scene to another place, where that place's background takes over (0.21.1). Going back to its lines shows it
+ * again. False with no key image or no line.
+ */
+export function cgOnLine(timeline: Timeline | null, cg: { at: number } | null | undefined, index: number): boolean {
+  const lines = timeline?.lines;
+  if (!cg || !lines || index < 0 || index >= lines.length || lines[index]!.main < cg.at) return false;
+  const opens = lines.findIndex((line) => line.main >= cg.at);
+  // The place the scene is in when the key image comes: the newest named up to its line.
+  const placeAt = (at: number) =>
+    lines
+      .slice(0, at + 1)
+      .reverse()
+      .find((line) => line.segment.place)?.segment.place;
+  const from = placeAt(opens);
+  for (let at = opens + 1; at <= index; at += 1) {
+    const place = lines[at]!.segment.place;
+    if (place && (!from || placeKey(place) !== placeKey(from))) return false;
+  }
+  return true;
+}
+
 /** The record for a beat's place among `places`, matched by name (the server keys them by its own slug). */
 export function placeEntry(places: Iterable<PlaceArt> | null | undefined, name: string | undefined): PlaceArt | null {
   if (!name || !places) return null;
@@ -187,8 +224,11 @@ export function placeEntry(places: Iterable<PlaceArt> | null | undefined, name: 
 export const worldPlaces = (world: WorldView): PlaceArt[] => Object.values(world.places ?? {});
 
 /** A paint's image URL once it is ready. */
-export const readyUrl = (paint: Paint | undefined | null): string | null =>
-  paint?.state === "ready" && typeof paint.url === "string" && paint.url ? paint.url : null;
+/**
+ * The picture a record shows: its own once ready, and (0.24.0) the one a repaint kept on screen while the new one
+ * paints and after it failed (the place, CG or side chip beside it offers Retry then).
+ */
+export const readyUrl = (paint: Paint | undefined | null): string | null => paint?.url || null;
 
 /** True when an earlier read already passed the line (the beat's `readThrough` is the furthest mainline read). */
 export function lineRead(line: ReaderLine, readThrough: number): boolean {

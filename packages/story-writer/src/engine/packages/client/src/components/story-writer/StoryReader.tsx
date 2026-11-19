@@ -13,10 +13,12 @@ import {
   type TouchEvent as ReactTouchEvent,
   type WheelEvent as ReactWheelEvent,
 } from "react";
-import { flushSync } from "react-dom";
+import { createPortal, flushSync } from "react-dom";
+import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
 import { chapterTitle, type StoryChapter, type StoryTheme } from "../../lib/story-writer/model";
+import type { PartMarkerRole } from "../../lib/story-writer/part-markers";
 import { ChapterBlock } from "./ChapterBlock";
 import {
   clonePageText,
@@ -28,6 +30,7 @@ import {
   type PageSide,
 } from "./page-flip";
 import { caretRangeNear, focusEditableAt, selectionFocusRect } from "./reader-caret";
+import { partBlockIndexOfRange, partPinRoleAt } from "./reader-parts";
 import {
   blockWidth,
   computeReaderLayout,
@@ -56,15 +59,28 @@ export interface StoryReaderProps {
   /** False while any generation is running. */
   editable: boolean;
   mariImageUrl: string;
+  /** Where the chapter bar goes: the shell's band above the book. */
+  chapterBarHost: HTMLElement | null;
+  /** Marker mode is on: book clicks place or remove Rewrite Part markers instead of moving the caret. */
+  partModeActive?: boolean;
+  /** The pair is corrupt or split: the surviving markers warn until cleared. */
+  partInvalid?: boolean;
+  /** This reader is the Rewrite Part preview: the marked draft reads normal, the context around it gray. */
+  partPreviewActive?: boolean;
+  /** Added to each chapter's number (a preview shows one chapter with its real number). */
+  numberOffset?: number;
+  /** A marker-mode click resolved to a block of a chapter, or to a placed pin. */
+  onPartClick?(chapterId: string, blockIndex: number, x: number, y: number): void;
+  onPartPinClick?(chapterId: string, role: PartMarkerRole): void;
   onChapterChange(chapterId: string, markdown: string): void;
   onStartChapter(chapterId: string, markdown: string): void;
 }
 
 // Underscores are not allowed in chapter ids (CLIENT_ID_PATTERN), so this never collides with a chapter.
-const TITLE_KEY = "__title";
+export const TITLE_KEY = "__title";
 const FONT_PROBE_TEXT = "Hamburgefonstiv 0123";
 
-interface ReaderBlock {
+export interface ReaderBlock {
   key: string;
   kind: "title" | "chapter" | "ghost";
   number: number;
@@ -117,7 +133,96 @@ function isTypingTarget(target: Element): boolean {
   );
 }
 
-const TitlePage = memo(function TitlePage({
+/**
+ * The reader's blocks in order (the title page, the chapters, a chapter just started on the ghost page, the ghost page)
+ * and the handler for edits in them. Without page counts (the Document theme) every block counts as one page.
+ */
+export function useReaderBlocks(
+  props: Pick<StoryReaderProps, "chapters" | "ghostChapterId" | "numberOffset" | "onChapterChange" | "onStartChapter">,
+  pageCounts: Record<string, number>,
+) {
+  const { chapters, ghostChapterId } = props;
+  const numberOffset = props.numberOffset ?? 0;
+  const latest = useRef(props);
+  useLayoutEffect(() => {
+    latest.current = props;
+  });
+  // The chapter the author just started on the ghost page, until the shell's chapter list has it.
+  const [pendingStart, setPendingStart] = useState<{ id: string; markdown: string } | null>(null);
+
+  const { blocks, totalPages } = useMemo(() => {
+    const list: ReaderBlock[] = [];
+    let start = 0;
+    const push = (block: Omit<ReaderBlock, "start" | "pages">) => {
+      const pages = block.kind === "title" ? 1 : Math.max(1, pageCounts[block.key] ?? 1);
+      list.push({ ...block, start, pages });
+      start += pages;
+    };
+    push({ key: TITLE_KEY, kind: "title", number: 0, markdown: "", title: "" });
+    chapters.forEach((chapter, index) =>
+      push({
+        key: chapter.id,
+        kind: "chapter",
+        number: index + 1 + numberOffset,
+        markdown: chapter.text,
+        title: chapterTitle(chapter.text),
+      }),
+    );
+    // The shell may send the new ghost id a render before its chapter list has the started chapter (a query cache
+    // notifies later): keep that block, with the same key, so the author's caret survives.
+    const started = pendingStart?.id;
+    if (pendingStart && started !== ghostChapterId && !chapters.some((chapter) => chapter.id === started)) {
+      push({
+        key: pendingStart.id,
+        kind: "chapter",
+        number: list.length + numberOffset,
+        markdown: pendingStart.markdown,
+        title: "",
+      });
+    }
+    // Right after the author starts the ghost page, its id is already a chapter; the shell sends a new ghost id.
+    if (!chapters.some((chapter) => chapter.id === ghostChapterId)) {
+      push({ key: ghostChapterId, kind: "ghost", number: list.length, markdown: "", title: "" });
+    }
+    return { blocks: list, totalPages: start };
+  }, [chapters, ghostChapterId, pageCounts, pendingStart]);
+
+  const handleEdit = useCallback((key: string, markdown: string, start: boolean) => {
+    if (start) {
+      setPendingStart({ id: key, markdown });
+      latest.current.onStartChapter(key, markdown);
+    } else {
+      latest.current.onChapterChange(key, markdown);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!pendingStart) return;
+    if (chapters.some((chapter) => chapter.id === pendingStart.id)) {
+      setPendingStart(null);
+      return;
+    }
+    // The shell never added it (the start failed): stop holding the block.
+    const timer = window.setTimeout(() => setPendingStart(null), 3000);
+    return () => window.clearTimeout(timer);
+  }, [chapters, pendingStart]);
+
+  return { blocks, totalPages, handleEdit };
+}
+
+/** The hint an empty chapter body shows. */
+export function blockPlaceholder(
+  t: TFunction,
+  block: ReaderBlock,
+  generatingChapterId: string | null,
+  editable: boolean,
+): string {
+  if (block.key === generatingChapterId) return t("reader.generatingPlaceholder");
+  if (block.kind !== "ghost") return t("reader.emptyChapterPlaceholder");
+  return editable ? t("reader.ghostPlaceholder") : t("reader.ghostWaiting");
+}
+
+export const TitlePage = memo(function TitlePage({
   width,
   title,
   details,
@@ -128,7 +233,8 @@ const TitlePage = memo(function TitlePage({
   startWriting,
   onStart,
 }: {
-  width: number;
+  /** The page's text width; none in the Document theme. */
+  width?: number;
   title: string;
   details: string;
   showStart: boolean;
@@ -169,7 +275,7 @@ const TitlePage = memo(function TitlePage({
  */
 export const StoryReader = forwardRef<StoryReaderHandle, StoryReaderProps>(function StoryReader(props, ref) {
   // pageAnimation is read at navigation time through `live`.
-  const { theme, storyTitle, storyDetails, chapters, generatingChapterId, ghostChapterId, editable, mariImageUrl } =
+  const { theme, storyTitle, storyDetails, chapters, generatingChapterId, editable, mariImageUrl, chapterBarHost } =
     props;
   const { t } = useTranslation();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -181,8 +287,6 @@ export const StoryReader = forwardRef<StoryReaderHandle, StoryReaderProps>(funct
   const [fontSignature, setFontSignature] = useState("");
   const [pageCounts, setPageCounts] = useState<Record<string, number>>({});
   const [spread, setSpread] = useState(0);
-  // The chapter the author just started on the ghost page, until the shell's chapter list has it.
-  const [pendingStart, setPendingStart] = useState<{ id: string; markdown: string } | null>(null);
 
   const layout = useMemo(
     () => (size.width > 0 && size.height > 0 ? computeReaderLayout({ theme, ...size }) : null),
@@ -191,36 +295,7 @@ export const StoryReader = forwardRef<StoryReaderHandle, StoryReaderProps>(funct
   const pps = layout?.pagesPerSpread ?? 1;
   const chapterLabel = useCallback((number: number) => t("reader.chapterLabel", { number }), [t]);
 
-  const { blocks, totalPages } = useMemo(() => {
-    const list: ReaderBlock[] = [];
-    let start = 0;
-    const push = (block: Omit<ReaderBlock, "start" | "pages">) => {
-      const pages = block.kind === "title" ? 1 : Math.max(1, pageCounts[block.key] ?? 1);
-      list.push({ ...block, start, pages });
-      start += pages;
-    };
-    push({ key: TITLE_KEY, kind: "title", number: 0, markdown: "", title: "" });
-    chapters.forEach((chapter, index) =>
-      push({
-        key: chapter.id,
-        kind: "chapter",
-        number: index + 1,
-        markdown: chapter.text,
-        title: chapterTitle(chapter.text),
-      }),
-    );
-    // The shell may send the new ghost id a render before its chapter list has the started chapter (a query cache
-    // notifies later): keep that block, with the same key, so the author's caret survives.
-    const started = pendingStart?.id;
-    if (pendingStart && started !== ghostChapterId && !chapters.some((chapter) => chapter.id === started)) {
-      push({ key: pendingStart.id, kind: "chapter", number: list.length, markdown: pendingStart.markdown, title: "" });
-    }
-    // Right after the author starts the ghost page, its id is already a chapter; the shell sends a new ghost id.
-    if (!chapters.some((chapter) => chapter.id === ghostChapterId)) {
-      push({ key: ghostChapterId, kind: "ghost", number: list.length, markdown: "", title: "" });
-    }
-    return { blocks: list, totalPages: start };
-  }, [chapters, ghostChapterId, pageCounts, pendingStart]);
+  const { blocks, totalPages, handleEdit } = useReaderBlocks(props, pageCounts);
 
   const totalSpreads = Math.max(1, Math.ceil(totalPages / pps));
   const current = Math.min(spread, totalSpreads - 1);
@@ -403,27 +478,6 @@ export const StoryReader = forwardRef<StoryReaderHandle, StoryReaderProps>(funct
     },
     [applyCounts, measureBlocks],
   );
-
-  const handleEdit = useCallback((key: string, markdown: string, start: boolean) => {
-    const { props: latest } = live.current;
-    if (start) {
-      setPendingStart({ id: key, markdown });
-      latest.onStartChapter(key, markdown);
-    } else {
-      latest.onChapterChange(key, markdown);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!pendingStart) return;
-    if (chapters.some((chapter) => chapter.id === pendingStart.id)) {
-      setPendingStart(null);
-      return;
-    }
-    // The shell never added it (the start failed): stop holding the block.
-    const timer = window.setTimeout(() => setPendingStart(null), 3000);
-    return () => window.clearTimeout(timer);
-  }, [chapters, pendingStart]);
 
   useLayoutEffect(() => {
     const root = rootRef.current;
@@ -662,13 +716,46 @@ export const StoryReader = forwardRef<StoryReaderHandle, StoryReaderProps>(funct
     focusEditableAt(body, range, page >= target.start + target.pages - 1 ? "end" : "start");
   };
 
+  /** A marker-mode click: resolve the chapter and block it lands on, or the placed pin it hit. */
+  const placePartMarkerAt = (x: number, y: number) => {
+    const { layout: current, blocks: list, current: active, props: latest } = live.current;
+    const viewport = viewportRef.current;
+    if (!current || !viewport) return;
+    const box = viewport.getBoundingClientRect();
+    const index = current.pagesPerSpread === 2 && x - box.left > current.textWidth + current.gap / 2 ? 1 : 0;
+    const page = active * current.pagesPerSpread + index;
+    const block = blockAtPage(list, page);
+    if (!block || block.kind !== "chapter") return;
+    const body = blockBody(block.key);
+    if (!body) return;
+    // A click on a bordered block removes that marker first.
+    const pin = partPinRoleAt(document.elementFromPoint(x, y), y);
+    if (pin) {
+      latest.onPartPinClick?.(block.key, pin);
+      return;
+    }
+    const left = box.left + index * (current.textWidth + current.gap);
+    const clampedX = Math.min(left + current.textWidth - 2, Math.max(left + 2, x));
+    const clampedY = Math.min(box.top + current.textHeight - 2, Math.max(box.top + 2, y));
+    const range = caretRangeNear(body, clampedX, clampedY, box.top, box.top + current.textHeight);
+    const blockIndex = partBlockIndexOfRange(body, range);
+    if (blockIndex !== null) latest.onPartClick?.(block.key, blockIndex, x, y);
+  };
+
   const isOwnControl = (target: Element) => !!target.closest("button, a, input, textarea, select");
   const isEditableBody = (target: Element) => !!(target.closest(".sw-body") as HTMLElement | null)?.isContentEditable;
 
   const handleBookMouseDown = (event: ReactMouseEvent<HTMLDivElement>) => {
     marginPressRef.current = false;
     const target = event.target as Element;
-    if (event.button !== 0 || !editable || isOwnControl(target) || isEditableBody(target)) return;
+    if (event.button !== 0 || !editable || isOwnControl(target)) return;
+    if (live.current.props.partModeActive) {
+      // Marker mode: a click on the text must not grab focus or start a selection — the body would then keep its
+      // old Markdown until blur, and the new pins would not show. The click handler below places the pin.
+      if (isEditableBody(target)) event.preventDefault();
+      return;
+    }
+    if (isEditableBody(target)) return;
     // Keep the current caret until the click places the new one (no blur and re-render in between).
     event.preventDefault();
     marginPressRef.current = true;
@@ -678,7 +765,12 @@ export const StoryReader = forwardRef<StoryReaderHandle, StoryReaderProps>(funct
     const fromMargin = marginPressRef.current;
     marginPressRef.current = false;
     const target = event.target as Element;
-    if (isOwnControl(target) || isEditableBody(target)) return;
+    if (isOwnControl(target)) return;
+    if (live.current.props.partModeActive) {
+      placePartMarkerAt(event.clientX, event.clientY);
+      return;
+    }
+    if (isEditableBody(target)) return;
     // A selection dragged out of the text onto the margin stays selected.
     if (!fromMargin && !(document.getSelection()?.isCollapsed ?? true)) return;
     placeCaretAt(event.clientX, event.clientY);
@@ -753,11 +845,13 @@ export const StoryReader = forwardRef<StoryReaderHandle, StoryReaderProps>(funct
     const visible = sides.map((_, index) => blockAtPage(blocks, first + index));
     const shownChapterIndex = visible.findIndex((block) => block?.kind === "chapter");
     const shownChapter = shownChapterIndex >= 0 ? visible[shownChapterIndex] : null;
-    const indicator = shownChapter
-      ? t("reader.indicator", { chapter: shownChapter.number, page: first + shownChapterIndex, total: numberedPages })
+    const pageInfo = { chapter: shownChapter?.number, page: first + shownChapterIndex, total: numberedPages };
+    const nextInfo = { chapter: chapters.length + 1 };
+    const [indicator, indicatorShort] = shownChapter
+      ? [t("reader.indicator", pageInfo), t("reader.indicatorShort", pageInfo)]
       : visible[0]?.kind === "ghost"
-        ? t("reader.indicatorNext", { chapter: chapters.length + 1 })
-        : t("reader.indicatorTitle");
+        ? [t("reader.indicatorNext", nextInfo), t("reader.indicatorNextShort", nextInfo)]
+        : [t("reader.indicatorTitle"), t("reader.indicatorTitle")];
     let previousChapterSpread: number | null = null;
     let nextChapterSpread: number | null = null;
     for (const block of blocks) {
@@ -881,15 +975,7 @@ export const StoryReader = forwardRef<StoryReaderHandle, StoryReaderProps>(funct
                       kind={block.kind}
                       label={chapterLabel(block.number)}
                       bodyLabel={t("reader.chapterBody", { number: block.number })}
-                      placeholder={
-                        block.key === generatingChapterId
-                          ? t("reader.generatingPlaceholder")
-                          : block.kind === "ghost"
-                            ? editable
-                              ? t("reader.ghostPlaceholder")
-                              : t("reader.ghostWaiting")
-                            : t("reader.emptyChapterPlaceholder")
-                      }
+                      placeholder={blockPlaceholder(t, block, generatingChapterId, editable)}
                       markdown={block.markdown}
                       width={blockWidth(block.pages, layout.textWidth, layout.gap)}
                       editable={editable}
@@ -931,31 +1017,38 @@ export const StoryReader = forwardRef<StoryReaderHandle, StoryReaderProps>(funct
         >
           <ChevronRight aria-hidden="true" size={24} strokeWidth={1.75} />
         </button>
-        <div className="sw-reader-footer" style={{ top: layout.footerTop, height: layout.footerHeight }}>
-          <div className="sw-reader-footer-bar">
-            <button
-              type="button"
-              disabled={previousChapterSpread === null}
-              aria-label={t("reader.previousChapter")}
-              title={t("reader.previousChapter")}
-              onClick={() => previousChapterSpread !== null && navigate(previousChapterSpread, { user: true })}
-            >
-              <ChevronsLeft aria-hidden="true" size={18} />
-            </button>
-            <span className="sw-indicator" aria-live="polite">
-              {indicator}
-            </span>
-            <button
-              type="button"
-              disabled={nextChapterSpread === null}
-              aria-label={t("reader.nextChapter")}
-              title={t("reader.nextChapter")}
-              onClick={() => nextChapterSpread !== null && navigate(nextChapterSpread, { user: true })}
-            >
-              <ChevronsRight aria-hidden="true" size={18} />
-            </button>
-          </div>
-        </div>
+        {chapterBarHost
+          ? // Above the book, in the shell's top band: the reader keeps its whole height for the pages.
+            createPortal(
+              <nav className="sw-chapterbar-pill" aria-label={t("tools.chapters")}>
+                <button
+                  type="button"
+                  disabled={previousChapterSpread === null}
+                  aria-label={t("reader.previousChapter")}
+                  title={t("reader.previousChapter")}
+                  onClick={() => previousChapterSpread !== null && navigate(previousChapterSpread, { user: true })}
+                >
+                  <ChevronsLeft aria-hidden="true" size={18} />
+                </button>
+                <span className="sw-indicator" aria-live="polite">
+                  <span className="sw-indicator-long">{indicator}</span>
+                  <span className="sw-indicator-short" aria-hidden="true">
+                    {indicatorShort}
+                  </span>
+                </span>
+                <button
+                  type="button"
+                  disabled={nextChapterSpread === null}
+                  aria-label={t("reader.nextChapter")}
+                  title={t("reader.nextChapter")}
+                  onClick={() => nextChapterSpread !== null && navigate(nextChapterSpread, { user: true })}
+                >
+                  <ChevronsRight aria-hidden="true" size={18} />
+                </button>
+              </nav>,
+              chapterBarHost,
+            )
+          : null}
       </>
     );
   }
@@ -968,6 +1061,9 @@ export const StoryReader = forwardRef<StoryReaderHandle, StoryReaderProps>(funct
       data-pps={pps}
       data-arrows={layout?.arrowsOutside === false ? "inside" : "outside"}
       data-editable={editable ? "true" : "false"}
+      data-sw-part-mode={props.partModeActive ? "true" : undefined}
+      data-sw-part-invalid={props.partInvalid ? "true" : undefined}
+      data-sw-part-preview={props.partPreviewActive ? "true" : undefined}
       role="region"
       aria-label={t("reader.region")}
       style={rootStyle}

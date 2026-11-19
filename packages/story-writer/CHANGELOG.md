@@ -1,5 +1,26 @@
 # Story Writer release notes
 
+## 0.4.0 — 2026-11-19
+
+- **Redo** appears beside **Rewrite the last chapter** after the model writes something: it takes back only the last generation and writes it again with the same instruction, instead of you deleting a refusal or a cut-off answer by hand. It works after **Write**, **Continue**, a quick reply and **Rewrite**, restores a cleared author's note, and asks first. Editing the chapter or its summary withdraws it.
+- Rewrite Part rewrites one stretch of a chapter: press the highlighter beside Rewrite and click where the part begins and ends (click a marker to remove it), describe the change and press **Generate rewrite**.
+- The replacement streams into a preview with read-only context on each side; edit it before applying, or stop and try again: nothing changes until **Apply**.
+- Applied rewrites and cancelled drafts land in a per-chapter **Version history**; **Restore** any version, itself recorded. Markers and history survive restarts and are removed with the chapter or a whole-chapter rewrite.
+
+## 0.3.0 — 2026-11-17
+
+- A third theme, **Document**: no pages, just your chapters one under another in a column you scroll, with a line between chapters. You can select text across what used to be a page break, and on a phone you read by scrolling. The chapter bar reads "Chapter 2 of 5", and its buttons move from chapter to chapter.
+- **Author tools → Peek at the prompt** shows what **Write** would send next: every message, the model and the token limit. It writes nothing.
+- The sticky note can be hidden, with the hide button on the open note or **Appearance → Show the author's note**. A hidden note is still sent with every chapter, and on smaller screens the book takes its place.
+- Characters, personas and lorebooks you add or change elsewhere in Marinara Engine now show up in **Cast & world** while Story Writer is open.
+
+## 0.2.0 — 2026-11-07
+
+- Quick replies: save instructions such as "More dialogue" or "Slow down" as buttons next to Write. Click one to write the next chapter (or continue a draft) with that instruction instead of your continue message. Add and edit them under **Quick replies** in the sidebar; **Show quick replies** hides the row. Every story shares the same list.
+- A quick reply's words also pick lorebook entries, like the author's note's do.
+- The chapter bar ("Chapter 2 · Page 5 of 18") moved above the book and got smaller, so the book itself is bigger.
+- Rewriting the last chapter now sends the request it was written from: the quick reply, or your continue message as it was then, even if you have changed it since. A chapter written from a quick reply keeps that instruction; to steer a rewrite, change the author's note.
+
 ## 0.1.1 — 2026-10-26
 
 - On a phone turned sideways, the closed settings drawer now hides completely behind its arrow, and the book no longer loses extra room beside the camera.

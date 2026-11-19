@@ -1,20 +1,25 @@
 // ──────────────────────────────────────────────
-// Story Writer: the floating bar under the book (write, stop, continue, rewrite, fullscreen, word count)
+// Story Writer: the floating bars under the book (write, stop, continue, rewrite, redo, fullscreen, word count; quick
+// replies)
 // ──────────────────────────────────────────────
 import { useId } from "react";
 import { useTranslation } from "react-i18next";
 import {
   CheckCheck,
   Feather,
+  Highlighter,
   Library,
   Loader2,
   Maximize2,
   Minimize2,
+  Pencil,
+  RefreshCw,
   RotateCcw,
   Square,
   StepForward,
 } from "lucide-react";
 import type { GenerationStatus } from "../../hooks/use-story-generation";
+import type { QuickReply } from "../../lib/story-writer/model";
 import { useNumberFormat } from "./sidebar/fields";
 
 export interface FullscreenControl {
@@ -24,6 +29,12 @@ export interface FullscreenControl {
   exitLabel: string;
 }
 
+/** The state of the Rewrite Part marker mode the action bar toggles into. */
+export interface PartModeControl {
+  active: boolean;
+  setActive(active: boolean): void;
+}
+
 export function ActionBar(props: {
   status: GenerationStatus;
   canWrite: boolean;
@@ -31,14 +42,18 @@ export function ActionBar(props: {
   chapterCount: number;
   /** The last chapter is a draft, so Write continues it. */
   lastChapterDraft: boolean;
+  /** Redo is offered: the latest generation is unchanged since it was written. */
+  canRedo: boolean;
   generatingChapterNumber: number | null;
   liveWords: number;
   totalWords: number;
   targetWords: number | null;
   fullscreen: FullscreenControl | null;
+  partMode: PartModeControl | null;
   onWrite(): void;
   onContinue(): void;
   onRewrite(): void;
+  onRedo(): void;
   onStop(): void;
   onOpenLibrary(): void;
   /** Marks the draft last chapter finished and writes the next one. */
@@ -58,13 +73,21 @@ export function ActionBar(props: {
       ? t("actions.writingStatus", { number })
       : props.status === "summarizing"
         ? t("actions.summarizing")
-        : t("actions.timeline");
+        : props.status === "part"
+          ? t("actions.partStatus")
+          : t("actions.timeline");
   const target = props.targetWords;
   const percent = target ? Math.min(100, Math.round((props.totalWords / target) * 100)) : 0;
   const fullscreen = props.fullscreen;
 
   return (
-    <div className="sw-actionbar" role="toolbar" aria-label={t("actions.label")}>
+    <div
+      className="sw-actionbar"
+      role="toolbar"
+      aria-label={t("actions.label")}
+      tabIndex={-1}
+      data-redo={props.canRedo ? "true" : undefined}
+    >
       {busy ? (
         <>
           <button
@@ -160,6 +183,32 @@ export function ActionBar(props: {
               <RotateCcw size={18} aria-hidden="true" />
             </button>
           ) : null}
+          {props.canRedo ? (
+            <button
+              type="button"
+              className="sw-action-icon sw-action-labelled"
+              aria-label={t("actions.redoLatest")}
+              title={t("actions.redoLatest")}
+              onClick={props.onRedo}
+            >
+              <RefreshCw size={18} aria-hidden="true" />
+              <span className="sw-action-label-long">{t("actions.redoShort")}</span>
+            </button>
+          ) : null}
+          {props.chapterCount > 0 && props.partMode ? (
+            // A toggle keeps one name; aria-pressed says whether marker mode is on. The mode's panel (instruction,
+            // generate, reset markers) lives beside the book while the mode is on.
+            <button
+              type="button"
+              className="sw-action-icon"
+              aria-pressed={props.partMode.active}
+              aria-label={t("actions.rewritePart")}
+              title={props.partMode.active ? t("actions.rewritePartExit") : t("actions.rewritePart")}
+              onClick={() => props.partMode!.setActive(!props.partMode!.active)}
+            >
+              <Highlighter size={18} aria-hidden="true" />
+            </button>
+          ) : null}
         </>
       )}
       <span className="sw-action-divider" aria-hidden="true" />
@@ -185,7 +234,7 @@ export function ActionBar(props: {
           {fullscreen.active ? <Minimize2 size={18} aria-hidden="true" /> : <Maximize2 size={18} aria-hidden="true" />}
         </button>
       ) : null}
-      <span className="sw-action-divider" aria-hidden="true" />
+      <span className="sw-action-divider sw-wordcount-divider" aria-hidden="true" />
       <div className="sw-wordcount">
         <span>
           {target
@@ -205,6 +254,54 @@ export function ActionBar(props: {
           </span>
         ) : null}
       </div>
+    </div>
+  );
+}
+
+/** The saved quick replies: each one writes like the primary button, sending its instruction instead. */
+export function QuickReplyBar(props: {
+  replies: QuickReply[];
+  canWrite: boolean;
+  hasConnection: boolean;
+  onSend(request: string): void;
+  onEdit(): void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className="sw-quickbar" role="toolbar" aria-label={t("quickReplies.label")}>
+      <div
+        className="sw-quickbar-list"
+        // The row has no scrollbar: an ordinary mouse wheel scrolls it sideways.
+        onWheel={(event) => {
+          if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
+          // A wheel that counts lines (Firefox) or pages moves the row as far as one that counts pixels.
+          const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? event.currentTarget.clientWidth : 1;
+          event.currentTarget.scrollLeft += event.deltaY * unit;
+        }}
+      >
+        {props.replies.map((reply) => (
+          // The whole label is the button's name; CSS shortens what is shown.
+          <button
+            key={reply.id}
+            type="button"
+            className="sw-quick-reply"
+            disabled={!props.canWrite}
+            title={props.hasConnection ? reply.text : t("actions.noConnection")}
+            onClick={() => props.onSend(reply.text)}
+          >
+            {reply.label || reply.text}
+          </button>
+        ))}
+      </div>
+      <button
+        type="button"
+        className="sw-action-icon"
+        aria-label={t("quickReplies.edit")}
+        title={t("quickReplies.edit")}
+        onClick={props.onEdit}
+      >
+        <Pencil size={16} aria-hidden="true" />
+      </button>
     </div>
   );
 }

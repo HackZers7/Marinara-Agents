@@ -137,7 +137,7 @@ for (const id of selectedPackageDirectories) {
       category,
       iconUrl: catalogArtworkUrl(id),
       artifact: {
-        url: `https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/artifacts/${basename(artifactPath)}`,
+        url: `https://raw.githubusercontent.com/HackZers7/Marinara-Agents/main/artifacts/${basename(artifactPath)}`,
         sha256: sha256(artifact),
         bytes: artifact.byteLength,
       },

@@ -54,17 +54,21 @@ export const ContentSchema: ZodType<ContentSettings> = z.object({
   darkness: z.enum(DARKNESSES),
   limits: z.object(limitsShape),
   custom: z
-    .array(z.object({ text: z.string().max(CUSTOM_LIMIT_TEXT_MAX), level: z.enum(["veil", "line"]) }))
+    .array(z.object({ text: z.string().max(CUSTOM_LIMIT_TEXT_MAX), level: LimitLevelSchema }))
     .max(CUSTOM_LIMITS_MAX),
   mcRole: z.enum(MC_ROLES).optional(),
 });
 
-/** The world's connections: narration is required; an empty job falls back to narration (normalizeConnections). */
+/**
+ * The world's connections: narration is required; an empty job falls back to narration (normalizeConnections). An
+ * empty `embeddings` is the built-in embedding model (S/memory/recall-index.ts).
+ */
 export const ConnectionsSchema: ZodType<Connections> = z.object({
   narration: z.string().min(1).max(CONNECTION_ID_MAX),
   structured: z.string().max(CONNECTION_ID_MAX).optional(),
   chat: z.string().max(CONNECTION_ID_MAX).optional(),
   compress: z.string().max(CONNECTION_ID_MAX).optional(),
+  embeddings: z.string().max(CONNECTION_ID_MAX).optional(),
 });
 
 export const WebRowSchema: ZodType<WebRow> = z.object({
@@ -106,6 +110,7 @@ export function normalizeImages(data: unknown): ImageSettings {
       expressionsSince: z.string().optional(),
       styleProfileId: z.string().optional(),
       style: z.string().max(IMAGE_STYLE_MAX).optional(),
+      sideSprites: z.boolean().optional(),
     },
     () => ({ connectionId: null, rating: DEFAULT_IMAGE_RATING, ask: false, expressions: true }),
     data,
@@ -114,7 +119,7 @@ export function normalizeImages(data: unknown): ImageSettings {
 
 export function normalizeConnections(data: unknown): Connections {
   const connections: Connections = { narration: "" };
-  for (const job of ["narration", "structured", "chat", "compress"] as const) {
+  for (const job of ["narration", "structured", "chat", "compress", "embeddings"] as const) {
     const value = field(data, job);
     if (typeof value === "string" && value) connections[job] = value;
   }
@@ -137,6 +142,7 @@ const PlaceSchema: ZodType<PlaceArt> = z.object({
   name: z.string().min(1).max(120),
   tags: z.string().max(600),
   art: PaintSchema.optional(),
+  painted: PaintSchema.optional(),
 });
 
 /** The kit's audio settings, each cue's brief and the generated tracks; a bad entry is dropped, the rest kept. */
@@ -217,6 +223,8 @@ export function normalizeWorld(data: unknown): World {
       places: normalizePlaces,
       dailyMessages: z.number().int().min(0).max(DAILY_MESSAGES_MAX).optional(),
       phoneDaily: PhoneDailySchema.optional(),
+      groupSquabbles: z.number().int().min(0).max(DAILY_MESSAGES_MAX).optional(),
+      groupDaily: PhoneDailySchema.optional(),
     },
     defaultWorld,
     isRecord(data) ? data : undefined,
@@ -225,10 +233,10 @@ export function normalizeWorld(data: unknown): World {
 
 /**
  * The world without its hidden story (no mystery truth or pieces, no web secrets), and without the music briefs or the
- * daily messages' quota.
+ * daily messages' and the group chat's quotas.
  */
 export function toWorldView(world: World): WorldView {
-  const { mystery, web, audio, phoneDaily: _phoneDaily, ...rest } = world;
+  const { mystery, web, audio, phoneDaily: _phoneDaily, groupDaily: _groupDaily, ...rest } = world;
   const { briefs: _briefs, ...shownAudio } = audio;
   return {
     ...rest,

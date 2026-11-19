@@ -20,6 +20,7 @@ import type {
   PhoneMessage,
   PhoneThread,
 } from "../packages/otome-forge/src/engine/packages/client/src/features/otome-forge/shared/api-types.ts";
+import { OUTSIDE_AFFECTION_DAILY_CAP } from "../packages/otome-forge/src/engine/packages/client/src/features/otome-forge/shared/economy.ts";
 import { NOTE_TEXT_MAX } from "../packages/otome-forge/src/engine/packages/client/src/features/otome-forge/shared/home.ts";
 import { forgeKnowledgeBoundary } from "@forge-kit/story-memory-integration.mjs";
 import { forgeTimeZoneRoutes } from "@forge-kit/time-zone-server.mjs";
@@ -63,7 +64,10 @@ import {
   phoneDue,
 } from "../packages/otome-forge/src/engine/packages/server/src/services/otome-forge/phone/daily.ts";
 import { phoneMemorySources } from "../packages/otome-forge/src/engine/packages/server/src/services/otome-forge/phone/memory.ts";
-import { normalizeChatReply } from "../packages/otome-forge/src/engine/packages/server/src/services/otome-forge/phone/replies.ts";
+import {
+  normalizeChatMemory,
+  normalizeChatReply,
+} from "../packages/otome-forge/src/engine/packages/server/src/services/otome-forge/phone/replies.ts";
 import { registerPhoneRoutes } from "../packages/otome-forge/src/engine/packages/server/src/services/otome-forge/routes/phone.ts";
 import { normalizeState } from "../packages/otome-forge/src/engine/packages/server/src/services/otome-forge/schemas/state.ts";
 import {
@@ -327,6 +331,16 @@ test("a reply written as the protagonist on a later line is refused, an ordinary
   assert.match(refused("He waits.\nInes: fine") as string, /^a message was written as Ines/);
   const kept = refused("Kai: Meet at 7:30\nBring the key.");
   assert.deepEqual(kept, { messages: [{ text: "Meet at 7:30\nBring the key." }] });
+  // 0.36.8 (#2394): an emoticon after a name is his message, kept whole; a speaker's colon still counts, space or not.
+  for (const text of ["ines :(", "Ines :P", "INES :D", "Ines:3", "omg\nines :((", "Kai :)", "Ines :-P see you"]) {
+    assert.deepEqual(refused(text), { messages: [{ text }] }, text);
+  }
+  assert.match(refused("Ines:fine") as string, /^a message was written as Ines/);
+  assert.match(refused("Ines: :(") as string, /^a message was written as Ines/);
+  // P18's quote keeps an emoticon line whole instead of cutting it after the name.
+  const conversation = "Ines: you ate my pie\nKai: Kai :P";
+  const memory = normalizeChatMemory({ memory: "She caught him.", quote: "Kai :P" }, names, conversation);
+  assert.deepEqual(memory, { memory: "She caught him.", quote: "Kai :P" });
 });
 
 test("P17 is a message from him alone: boundary, chat contract, comfort rule, stage, rupture, the note, nothing hidden", async () => {
@@ -378,10 +392,21 @@ test("P17 is a message from him alone: boundary, chat contract, comfort rule, st
     "Your mask has started to crack",
     "A rupture stands between you",
     "anything about their life outside the story",
+    // 0.29.0: he never echoes her words, and texts like a person, not a novel.
+    "Never parrot or echo what Ines wrote",
+    "Text the way a real person texts: plain, everyday words",
+    // 0.36.8 (#2394): the thread reads like a chat (capitals to scream, emoji and so on), as far as fits who writes.
+    "- Whatever carries these messages, they read like a chat, as far as it fits the one writing",
+    "CAPS to scream when excited, angry or flustered",
+    "Someone stiff or formal still texts stiff and formal",
   ]) {
     assert.ok(head.includes(part), `system has: ${part.slice(0, 50)}`);
   }
-  const user = prompt.at(-1)!.content;
+  // 0.20.2: the cached part (his card, the story, the conversations that are over), then the thread now.
+  const user = prompt
+    .filter((message) => message.role === "user")
+    .map((message) => message.content)
+    .join("\n");
   assert.ok(user.includes(`Ines: (replying to your note: "${quote}") I read your note.`));
   assert.ok(user.includes("He mended the north lens alone."));
   assert.ok(user.includes("Open grievance g-1"));
@@ -396,7 +421,7 @@ test("Close and remember: one session, P18 on the summary contract, the capped a
   const today = localDay("UTC");
   await t.store.mutateDoc(runDocTarget("state", stateId(t.runId)), normalizeState, (state) => ({
     ...state,
-    daily: { dayKey: today, starlight: 0, affection: { [KAI]: 297 } },
+    daily: { dayKey: today, starlight: 0, affection: { [KAI]: OUTSIDE_AFFECTION_DAILY_CAP - 3 } },
   }));
   assert.equal((await t.phone("POST", send, { li: KAI, body: { text: "Are you awake?" } })).status, 200);
   const points = (await t.state()).lis[KAI]!.points;
@@ -407,7 +432,7 @@ test("Close and remember: one session, P18 on the summary contract, the capped a
   assert.deepEqual(
     closed.body.grants,
     [{ source: "close-and-remember", li: KAI, affection: 3 }],
-    "capped at 300 a day",
+    "capped at the day's limit",
   );
   assert.equal((await t.state()).lis[KAI]!.points, points + 3);
   const thread = (await t.thread(KAI))!;
@@ -747,8 +772,13 @@ test("P17 keeps the overview and recalled details whole beside the previous chap
   const phone = phoneRoutes({ ...t.deps, memory: memory as unknown as OtomeMemory }, "r-phonea-aaaaaa");
   const sent = await phone("POST", send, { li: KAI, body: { text: "Do you remember my sister's name?" } });
   assert.equal(sent.status, 200, JSON.stringify(sent.body));
-  const user = t.calls.find((call) => isReplyPrompt(call.messages))!.messages.at(-1)!.content;
-  for (const mark of ["OVERVIEW-MARK", "OLD-SESSION-MARK", "# Previous chapter in full: Harbour", "LATEST-END-MARK"]) {
+  const user = t.calls.find((call) => isReplyPrompt(call.messages))!.messages[1]!.content;
+  for (const mark of [
+    "OVERVIEW-MARK",
+    "OLD-SESSION-MARK",
+    "# Previous chapter in full: [Chapter 1] Harbour",
+    "LATEST-END-MARK",
+  ]) {
     assert.ok(user.includes(mark), `P17 holds ${mark}`);
   }
   assert.ok(user.includes("LATEST-START-MARK"), "the previous chapter goes in whole, as GF's chat gets it");
@@ -1131,9 +1161,36 @@ test("P17 written first changes only its task line: the same role, rules, bounda
   const reply = chatReplyMessages(input);
   const first = chatReplyMessages({ ...input, first: true });
   assert.equal(first[0]!.content, reply[0]!.content, "the system message is the same");
-  const lines = (messages: typeof reply) => messages[1]!.content.split("\n");
+  assert.equal(first[1]!.content, reply[1]!.content, "the cached part is the same: a reply reads what it wrote");
+  const lines = (messages: typeof reply) => messages[2]!.content.split("\n");
   const changed = lines(first).filter((line) => !lines(reply).includes(line));
   assert.equal(changed.length, 1);
   assert.ok(changed[0]!.includes(FIRST_LINE));
   assert.ok(lines(first).includes("(no messages yet)"));
+});
+
+test("P17 caches all but the thread now and its task, for five minutes, so the next reply reads it (0.20.2)", async () => {
+  const t = await phoneWorld("r-phonec-aaaaaa", { replies: phoneModel() });
+  for (const text of ["Are you awake?", "The lamp is out again."]) {
+    const sent = await t.phone("POST", send, { li: KAI, body: { text } });
+    assert.equal(sent.status, 200, JSON.stringify(sent.body));
+  }
+  const [one, two] = t.calls.filter((call) => isReplyPrompt(call.messages));
+  assert.ok(one && two, "two replies");
+  for (const call of [one, two]) {
+    assert.deepEqual(
+      call.messages.map((message) => [message.role, message.cacheBreakpoint === true]),
+      [
+        ["system", true],
+        ["user", true],
+        ["user", false],
+      ],
+    );
+    assert.equal((call.options as { cacheTtl?: string }).cacheTtl, "5m");
+    assert.ok(call.messages[2]!.content.startsWith("THE THREAD NOW"), "the thread and the task follow the cached part");
+    assert.ok(!call.messages[1]!.content.includes("Are you awake?"), "no message of the thread in the cached part");
+  }
+  assert.equal(two.messages[0]!.content, one.messages[0]!.content, "the same instructions");
+  assert.equal(two.messages[1]!.content, one.messages[1]!.content, "the same card, story and conversations over");
+  assert.ok(two.messages[2]!.content.includes("The lamp is out again."));
 });

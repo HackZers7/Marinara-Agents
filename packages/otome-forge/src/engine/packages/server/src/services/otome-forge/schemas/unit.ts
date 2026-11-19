@@ -17,8 +17,10 @@ import type {
   StageLines,
   StickerSet,
   Unit,
+  BibleBond,
 } from "../../../../../client/src/features/otome-forge/shared/api-types.js";
 import { STICKER_EMOTION, STICKERS_PER_LI } from "../../../../../client/src/features/otome-forge/shared/stickers.js";
+import { FACES } from "../../../../../client/src/features/otome-forge/shared/faces.js";
 import {
   BIRTHDAY_PATTERN,
   MASK_TELLS_MAX,
@@ -65,6 +67,27 @@ export const IntimacySchema: ZodType<BibleIntimacy> = z.object({
 });
 
 const INTIMACY_ITEM_MAX = 120;
+
+/** A bond rank's reveal (0.23.0); the list holds one per rank 11-20. */
+const BOND_LEVELS = 10;
+
+export const BondSchema: ZodType<BibleBond> = z.object({ level: z.number().int().min(11).max(20), truth: text() });
+
+/** His bond reveals, one per rank 11-20, trimmed, or undefined when none reads; a damaged list reads as none. */
+export function normalizeBondReveals(data: unknown): BibleBond[] | undefined {
+  if (!Array.isArray(data)) return undefined;
+  const seen = new Set<number>();
+  const entries: BibleBond[] = [];
+  for (const row of data) {
+    const parsed = BondSchema.safeParse(row);
+    if (!parsed.success) continue;
+    const truth = parsed.data.truth.replace(/\s+/g, " ").trim();
+    if (!truth || seen.has(parsed.data.level)) continue;
+    seen.add(parsed.data.level);
+    entries.push({ level: parsed.data.level, truth });
+  }
+  return entries.length ? entries.sort((a, b) => a.level - b.level) : undefined;
+}
 
 /** The block trimmed to a handful of short labels, or the problem when nothing usable is left. */
 export function normalizeIntimacy(value: BibleIntimacy): BibleIntimacy | string {
@@ -142,6 +165,7 @@ const BIBLE_FIELDS: { [K in keyof Bible]-?: ZodType<Bible[K]> } = {
   }),
   play: z.object({ style: text(300), cheat: z.enum(["steady", "nudge", "extra", "freeze", "calculate"]) }),
   intimacy: IntimacySchema.optional(),
+  bond: z.array(BondSchema).max(BOND_LEVELS).optional(),
 };
 
 export const BibleSchema: ZodType<Bible> = z.object(BIBLE_FIELDS);
@@ -197,19 +221,34 @@ export function normalizeBible(data: unknown): Bible | null {
 const LineList = z.array(z.string().min(1).max(300)).max(12);
 
 const TimesSchema = z.object({ morning: LineList, day: LineList, night: LineList });
+const ZoneFace = z.enum(FACES).optional();
 
+// #2152: cheek, crotch, the contract and faces are optional, so a pack written before 0.14.0 still reads.
 export const StageLinesSchema: ZodType<StageLines> = z.object({
   stage: z.number().int().min(1).max(6),
-  tap: z.object({ head: TimesSchema, hand: TimesSchema, heart: TimesSchema }),
+  tap: z.object({
+    head: TimesSchema,
+    cheek: TimesSchema.optional(),
+    heart: TimesSchema,
+    hand: TimesSchema,
+    crotch: TimesSchema.optional(),
+  }),
   annoyed: LineList,
   cold: LineList,
   at: z.string(),
+  contract: z.string().max(40).optional(),
+  faces: z.object({ head: ZoneFace, cheek: ZoneFace, heart: ZoneFace, hand: ZoneFace, crotch: ZoneFace }).optional(),
 });
 
 export const FixedLinesSchema: ZodType<FixedLines> = z.object({
   comfort: LineList,
   claw: z.object({ cheer: LineList, cheat: LineList, win: LineList, miss: LineList, plush: LineList }),
+  // 0.35.0: optional, so a pack written before Kitty Cards still reads.
+  kitty: z
+    .object({ start: LineList, good: LineList, cheat: LineList, caught: LineList, win: LineList, lose: LineList })
+    .optional(),
   at: z.string(),
+  contract: z.string().max(40).optional(),
 });
 
 const STAGE_KEYS: readonly ArcStageKey[] = ["1", "2", "3", "4", "5", "6"];
@@ -308,14 +347,19 @@ export function normalizeUnit(data: unknown): Unit {
       lines: normalizeLinePacks,
       cutouts: normalizeCutouts,
       plushArt: normalizePlushArt,
+      figurine: PaintSchema.optional(),
       stickers: normalizeStickerSet,
+      // 0.35.0: absent until GET /play is read with images on (S/art/kittens.ts).
+      kitten: PaintSchema.optional(),
     },
     defaultUnit,
     isRecord(data) ? data : undefined,
   );
-  // An LI with no pack yet has no `lines` key at all, as before M3; one with no plush drawn, no `plushArt`.
+  // An LI with no pack yet has no `lines` key at all, as before M3; one with no plush drawn, no `plushArt`; one whose
+  // figurine was never set to paint, no `figurine` (#2138; a 0.9.0 SVG `figurineArt` is not read, so it is dropped).
   if (!unit.lines) delete unit.lines;
   if (!unit.plushArt) delete unit.plushArt;
+  if (!unit.figurine) delete unit.figurine;
   if (!unit.stickers) delete unit.stickers;
   // A worn look that is not one of theirs (a damaged document) wears the base portrait.
   const { wornOutfit: _worn, ...rest } = unit;

@@ -40,6 +40,11 @@
 // 0.8.7: the arc and chapter planners read the player's premise in one line after the setting (the maintainer's: only
 // they get it), so the chapter, route and repair plan digests moved, by that line alone; the scenes, Confrontations,
 // Closers and banners are untouched (otome-forge-knowledge's 0.8.7 world test pins both).
+// 0.36.3: the shared writing rules no longer ask for what the protagonist feels in their body (0.6.6's line), so
+// every story and banner digest moved once.
+// 0.36.4 (#2384): the shared writing rules drop the dialogue rule (fragments, dodged questions), and the beat,
+// confrontation and closer ask for spoken lines in its place, so every story and banner digest moved once.
+// 0.36.9: the writing rules ask not to fall into patterns, so every prompt that carries them moved.
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import test from "node:test";
@@ -122,7 +127,7 @@ function storyPrompts(content: ContentSettings): Record<string, string> {
   const fight = node({ kind: "confrontation", cg: true });
   const close = node({ kind: "closer", cg: true });
   const arc = { world, player, units, state, li: KAI, memory: "" };
-  const banner = (kind: "memories" | "his-wardrobe" | "my-wardrobe") =>
+  const banner = (kind: "memories" | "his-wardrobe" | "my-wardrobe" | "dates") =>
     text(
       bannerPlanMessages({
         kind,
@@ -173,6 +178,7 @@ function storyPrompts(content: ContentSettings): Record<string, string> {
     bannerMemories: banner("memories"),
     bannerHis: banner("his-wardrobe"),
     bannerMine: banner("my-wardrobe"),
+    bannerDates: banner("dates"),
   };
 }
 
@@ -254,28 +260,41 @@ test("chapter and scene prompts keep emotional payoffs occasional and permit cha
 });
 
 const EXPECTED_ANGST: Record<string, string> = {
-  bannerHis: "e8a06d181974c9ca",
-  bannerMemories: "71bad70b6fa3842a",
-  bannerMine: "109b0762d8bcf329",
-  beat: "26d7ba0dafc6c0bf",
-  beatWithCg: "8161431cbc12789d",
-  chapterPlan: "020f09a8fbf3bacb",
-  closer: "a1a09309945e9e5d",
-  confrontation: "d0a05079393b602d",
-  repairPlan: "e46599b2cc16decd",
-  routePlan: "84b3db7e07fa321b",
+  bannerDates: "b796908cdd97d54c",
+  bannerHis: "cb616f4e17eaa08d",
+  bannerMemories: "ce1d178ef41e8973",
+  bannerMine: "725fba74b2eb3b2e",
+  beat: "433fc0897f5bc73a",
+  beatWithCg: "9157752147d83887",
+  chapterPlan: "d046a2c964a7785b",
+  closer: "b06b99b19bfbf9db",
+  confrontation: "6b6f1370f199802b",
+  repairPlan: "93abd204773303a3",
+  routePlan: "9408e2b52db46a9a",
 };
+// 0.18.1: the canon writing rule names an existing world's characters, so both sets of digests moved.
+// 0.20.2: P10 and P11 open with the story context their chapter's scenes cache, so both sets' routePlan and
+// repairPlan digests moved.
+// 0.19.1: the chapter plan's climax is optional, so both chapterPlan digests moved.
+// 2026-11-10: betweenYou's slow burn holds back love, not attraction, and carries the affection level, so these moved.
+// 2026-11-11: a chapter's last scene hands an open decision to the player, and no scene assumes a choice never made.
+// 0.23.0: the affection line reads "of 20" (the bond ranks), so both sets moved again.
+// 0.26.0: the writing rules ask for plain prose and dialogue in each speaker's own register, so both sets moved.
+// 0.33.3: the writing rules add the maintainer's lines on narration, spoken dialogue and echoing, so both moved.
+// 2026-11-14 (#2303): the wardrobe banners ask for three 3★ looks and three Snapshots, so both sets' bannerHis and
+// bannerMine moved; bannerMemories is unchanged, and bannerDates (the Dates banner) is new.
 const EXPECTED_GENTLE: Record<string, string> = {
-  bannerHis: "5b01874fc4fabd17",
-  bannerMemories: "da2465bc6853ef39",
-  bannerMine: "75d0bd9aebbf79ad",
-  beat: "7ec97d9b201b895e",
-  beatWithCg: "ce1e12d2113f4eab",
-  chapterPlan: "98b6824c925d752b",
-  closer: "54aafc5f0e85bc63",
-  confrontation: "76c943bb55171273",
-  repairPlan: "1128337cb3714cf0",
-  routePlan: "88c0dfed048e180b",
+  bannerDates: "571afcba0e0ab87e",
+  bannerHis: "b14147cf3df3a542",
+  bannerMemories: "70e32fa566053e64",
+  bannerMine: "ecbae7e5b4a66890",
+  beat: "2b489cced51a96b9",
+  beatWithCg: "a2aacab10af4b9ae",
+  chapterPlan: "d619e96a3916c54c",
+  closer: "7d24462898d3310a",
+  confrontation: "8b46641ff2264007",
+  repairPlan: "bccaf9f4fe3a1056",
+  routePlan: "2a4b4764ed08a318",
 };
 
 test("the SFW defaults pin scene pacing and earned character change in story and banner prompts", () => {
@@ -349,8 +368,9 @@ test("the SFW defaults' content contracts are the ones every prompt carried befo
 
 const LOOK_NEGATIVE =
   "text, captions, logos, watermarks, borders, UI, collage layouts, duplicate faces, extra people, cropped-off heads, cropped feet, busy background, scenery";
+// 0.36.5: the scene negative names the anatomy that goes wrong when people touch (the maintainer's call).
 const CG_NEGATIVE =
-  "text, captions, logos, watermarks, borders, UI, collage layouts, duplicate faces, cropped-off heads, extra limbs";
+  "text, captions, logos, watermarks, borders, UI, collage layouts, duplicate faces, cropped-off heads, bad anatomy, deformed body, merged bodies, fused limbs, extra limbs, extra arms, extra legs, missing limbs, bad hands, extra fingers, missing fingers, fused fingers, malformed hands, twisted torso, disproportionate body, long neck";
 const PLACE_NEGATIVE =
   "people, person, humans, crowd, character, text, captions, logos, watermarks, borders, UI, collage layouts";
 const SAFE = "child, childlike, minor, underage, school uniform, nudity, nsfw, sexual content, lingerie";
@@ -384,7 +404,7 @@ test("SFW images keep their safety prompts and negatives, and tagged faces retai
     "harbour, night, lanterns, no humans, scenery, wide establishing shot, detailed background, atmospheric lighting";
   // Sentence prompts say how many people to draw (the maintainer's anatomy report, 2026-11-03).
   const two =
-    "Kai: tall man, grey eyes; keeper's coat. Ines: short dark hair; oilskin. Draw exactly two people, each appearing once, with two arms, two legs and five fingers on each visible hand.";
+    "Kai: tall man, grey eyes; keeper's coat. Ines: short dark hair; oilskin. Draw exactly two people, each appearing once.";
   const cgTail =
     "cinematic composition, detailed background, dramatic lighting, emotional moment, safe for work, fully clothed";
   assert.deepEqual(
@@ -401,15 +421,16 @@ test("SFW images keep their safety prompts and negatives, and tagged faces retai
       faceTagged: expressionPrompt({ unit, base: "/kai.png", face: "tender", world, style: tagged }),
     },
     {
+      // A written outfit keeps the likeness reference's own clothes and hood out (2026-11-17).
       look: {
         prompt:
-          "tall man, grey eyes, keeper's coat, full body, standing, neutral pose, plain flat mid-grey background, safe for work, fully clothed, adult man",
-        negativePrompt: `${LOOK_NEGATIVE}, ${SAFE}`,
+          "tall man, grey eyes, keeper's coat, full body, standing, neutral pose, plain flat mid-grey background, safe for work, fully clothed, adult man. If a reference picture of Kai is attached, use it only for Kai's face, hair and build: Kai wears only the outfit written here, never the clothes, hood, hat or accessories in that picture, and never its pose, framing or background.",
+        negativePrompt: `${LOOK_NEGATIVE}, hood up, hooded, hat, ${SAFE}`,
       },
       lookTagged: {
         prompt:
           "anime screencap, tall man, grey eyes, keeper's coat, full body, standing, neutral pose, plain flat mid-grey background, safe for work, fully clothed, adult man, masterpiece",
-        negativePrompt: `${LOOK_NEGATIVE}, ${SAFE}, lowres`,
+        negativePrompt: `${LOOK_NEGATIVE}, hood up, hooded, hat, ${SAFE}, lowres`,
       },
       lookEdited: { prompt: "red coat, safe for work, fully clothed, adult man", negativePrompt: `blurry, ${SAFE}` },
       place: {
@@ -425,7 +446,7 @@ test("SFW images keep their safety prompts and negatives, and tagged faces retai
         negativePrompt: `${CG_NEGATIVE}, ${SAFE}`,
       },
       cgOne: {
-        prompt: `anime screencap At the lamp. Kai: tall man, grey eyes; keeper's coat. ${cgTail}, adult man, masterpiece`,
+        prompt: `anime screencap, At the lamp. Kai: tall man, grey eyes; keeper's coat. ${cgTail}, adult man, masterpiece`,
         negativePrompt: `${CG_NEGATIVE}, extra people, ${SAFE}, lowres`,
       },
       pair: {

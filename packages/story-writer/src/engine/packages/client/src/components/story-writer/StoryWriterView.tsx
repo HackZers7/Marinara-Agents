@@ -1,5 +1,6 @@
 // ──────────────────────────────────────────────
-// Story Writer: the full-page view (stage, book, sticky note, action bar, settings drawer)
+// Story Writer: the full-page view (stage, book, chapter bar, sticky note, action and quick bars, settings drawer,
+// prompt peek)
 // ──────────────────────────────────────────────
 import {
   useCallback,
@@ -18,14 +19,35 @@ import { Loader2, RefreshCw } from "lucide-react";
 import { host } from "marinara:host";
 import { resolveDefaultConnectionId, useStoryConnections } from "../../hooks/use-engine-resources";
 import { useStoryGeneration } from "../../hooks/use-story-generation";
-import { storyWriterKeys, usePreferences, useStoryDocument, useStoryList } from "../../hooks/use-story-writer";
+import {
+  storyWriterKeys,
+  usePartHistory,
+  usePreferences,
+  useStoryDocument,
+  useStoryList,
+} from "../../hooks/use-story-writer";
 import { STORY_WRITER_ASSETS, storyWriterAssetUrl, type StoryWriterAsset } from "../../lib/story-writer/assets";
 import { downloadTextFile, storyFileName, storyToMarkdown, storyToPlainText } from "../../lib/story-writer/export";
 import { countWords, storyDisplayTitle, type StoryChapter, type StorySummary } from "../../lib/story-writer/model";
+import {
+  applyPartRewrite,
+  findStoryPartMarkers,
+  insertPartMarker,
+  nextPartPlacement,
+  partSpanOf,
+  removePartMarker,
+  stripPartTokens,
+  type PartMarkerRole,
+} from "../../lib/story-writer/part-markers";
 import { storyThemeVariables, type ResolvedColorMode } from "../../lib/story-writer/styles-shell";
 import { generateClientId } from "../../lib/utils";
-import { ActionBar, type FullscreenControl } from "./ActionBar";
+import { ActionBar, QuickReplyBar, type FullscreenControl, type PartModeControl } from "./ActionBar";
+import { PartHistoryDialog } from "./PartHistoryDialog";
+import { PartModePanel } from "./PartModePanel";
+import { PartPreviewDialog } from "./PartPreviewDialog";
+import { PromptPeekDialog } from "./PromptPeek";
 import { StickyNote } from "./StickyNote";
+import { StoryDocument } from "./StoryDocument";
 import { StoryReader, type StoryReaderHandle } from "./StoryReader";
 import { StorySidebar, type SidebarSectionId } from "./StorySidebar";
 
@@ -133,6 +155,16 @@ export function StoryWriterView({ capabilityProps }: { capabilityProps: Record<s
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sectionRequest, setSectionRequest] = useState<{ id: SidebarSectionId; nonce: number } | null>(null);
   const [noteOpen, setNoteOpen] = useState(false);
+  const [peekOpen, setPeekOpen] = useState(false);
+  const [partMode, setPartMode] = useState(false);
+  // The Rewrite Part panel's own state: the instruction and the include-original choice survive mode switches.
+  const [partInstruction, setPartInstruction] = useState("");
+  const [partIncludeOriginal, setPartIncludeOriginal] = useState(true);
+  const [partPreviewDismissed, setPartPreviewDismissed] = useState(false);
+  const [partHistoryOpen, setPartHistoryOpen] = useState(false);
+  const peekOpener = useRef<HTMLElement | null>(null);
+  const dockRef = useRef<HTMLDivElement>(null);
+  const [chapterBarHost, setChapterBarHost] = useState<HTMLDivElement | null>(null);
   const [ghostChapterId, setGhostChapterId] = useState(generateClientId);
   const [firstStoryFailed, setFirstStoryFailed] = useState(false);
   const readerRef = useRef<StoryReaderHandle>(null);
@@ -210,6 +242,7 @@ export function StoryWriterView({ capabilityProps }: { capabilityProps: Record<s
         .filter(Boolean)
         .join(" · ")
     : "";
+  const showQuickReplies = preferences.showQuickReplies && preferences.quickReplies.length > 0;
   const fullscreen = readFullscreen(capabilityProps.browserFullscreen, {
     enter: t("actions.enterFullscreen"),
     exit: t("actions.exitFullscreen"),
@@ -228,6 +261,175 @@ export function StoryWriterView({ capabilityProps }: { capabilityProps: Record<s
     (chapterId: string, markdown: string) => void saveChapter(chapterId, { text: markdown }),
     [saveChapter],
   );
+
+  // ── Rewrite Part marker mode ──
+
+  // The story's single pair, re-read from the chapters whenever a save moves them; one pair per story.
+  const partMarkers = useMemo(() => findStoryPartMarkers(chapters), [chapters]);
+  const partInvalid = partMarkers.status.kind === "invalid";
+  // The pair's chapter owns the version history: it dies with the chapter (the store removes it on delete).
+  const partHistory = usePartHistory(storyId, partMarkers.chapterId);
+
+  // A corrupt or split pair is detected on mode entry and on every chapter load, never silently — the toast fires
+  // whatever the mode is, and the deps keep it from repeating while the pair stays invalid.
+  useEffect(() => {
+    if (!partInvalid) return;
+    toast.warning(t("part.invalidPair"));
+  }, [partMode, partInvalid, t]);
+
+  /** Applies a marker edit to a chapter through the normal save path, so markers persist like typed text. */
+  const applyPartEdit = useCallback(
+    (chapterId: string, edit: (markdown: string) => string | null): boolean => {
+      const chapter = chapters.find((item) => item.id === chapterId);
+      if (!chapter) return false;
+      const next = edit(chapter.text);
+      // An edit that cannot land (a rewrite whose pair was edited away) leaves the chapter alone.
+      if (next === null || next === chapter.text) return false;
+      onChapterChange(chapterId, next);
+      return true;
+    },
+    [chapters, onChapterChange],
+  );
+
+  /** A marker-mode click in a chapter body: the next placement, or a rejection with feedback. */
+  const handlePartClick = useCallback(
+    (chapterId: string, blockIndex: number) => {
+      const placement = nextPartPlacement(chapterId, partMarkers);
+      if (placement.role === "blocked") {
+        if (placement.reason === "cross-chapter") toast.warning(t("part.crossChapter"));
+        else if (placement.reason === "pair-exists") toast.info(t("part.pairExists"));
+        else toast.warning(t("part.invalidPair"));
+        return;
+      }
+      applyPartEdit(chapterId, (markdown) => insertPartMarker(markdown, blockIndex, placement.role));
+      toast.info(placement.role === "start" ? t("part.startPlaced") : t("part.endPlaced"));
+    },
+    [partMarkers, applyPartEdit, t],
+  );
+
+  /** A click on a placed pin removes that marker; the next click re-places it. */
+  const handlePartPinClick = useCallback(
+    (chapterId: string, role: PartMarkerRole) => {
+      applyPartEdit(chapterId, (markdown) => removePartMarker(markdown, role));
+    },
+    [applyPartEdit],
+  );
+
+  /** Clears both markers (and a corrupt pair) wherever they sit. */
+  const resetPartMarkers = useCallback(() => {
+    for (const chapter of chapters) {
+      const next = stripPartTokens(chapter.text);
+      if (next !== chapter.text) onChapterChange(chapter.id, next);
+    }
+  }, [chapters, onChapterChange]);
+
+  // Leaving a generation disables the mode: pins must not move while the chapter is streaming. A part run is the
+  // mode's own generation: it keeps the mode (and the panel) while it streams into the preview.
+  useEffect(() => {
+    if (generation.status !== "idle" && generation.status !== "part") setPartMode(false);
+  }, [generation.status]);
+
+  // Entering the mode drops the editing caret: a focused chapter body keeps its old Markdown until blur, so the
+  // pins of a placement would not show while it holds focus.
+  useEffect(() => {
+    if (!partMode) return;
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && active.classList.contains("sw-body")) active.blur();
+  }, [partMode]);
+
+  const partModeControl: PartModeControl | null =
+    data && settings
+      ? {
+          active: partMode,
+          setActive: setPartMode,
+        }
+      : null;
+
+  // A part run: the preview shows it unless the author closed it after the stream ended. A new run always reopens it.
+  const partPreview = generation.partPreview;
+  const partStreaming = generation.status === "part";
+  useEffect(() => {
+    if (partStreaming) setPartPreviewDismissed(false);
+  }, [partStreaming]);
+  const showPartPreview = !!partPreview && (!partStreaming ? !partPreviewDismissed : true);
+
+  /**
+   * A confirmed rewrite: the whole span between the markers becomes the previewed draft, markers wrapping it, and the
+   * step lands in the chapter's version history as an applied entry — the hand-edited draft IS the after text. When
+   * the pair was edited away before the confirm, nothing lands: the preview still closes, but the history records
+   * nothing and the author is told the markers are gone.
+   */
+  const applyPartPreview = useCallback(
+    (draft: string, edited: boolean) => {
+      const preview = generation.partPreview;
+      if (!preview) return;
+      const chapter = chapters.find((item) => item.id === preview.chapterId);
+      const before = chapter ? (partSpanOf(chapter.text)?.span ?? "") : "";
+      const changed = applyPartEdit(preview.chapterId, (markdown) => applyPartRewrite(markdown, draft));
+      if (changed) {
+        void partHistory.append({ textBefore: before, textAfter: draft, applied: true });
+        toast.success(t("part.applied"));
+      } else {
+        toast.warning(t("part.pairMissing"));
+      }
+      // The preview closes either way; the applied draft lives on in the history too.
+      if (edited) generation.discardPartPreview();
+      setPartPreviewDismissed(true);
+    },
+    [generation, applyPartEdit, partHistory, chapters, t],
+  );
+
+  /**
+   * Cancel: without hand edits the preview just closes; with them the EDITED draft is saved into the chapter's
+   * version history as an unapplied entry (the chapter itself changes nothing) instead of being lost. The dialog
+   * hands over its current draft, because the hook's preview only knows the streamed text.
+   */
+  const cancelPartPreview = useCallback(
+    (draft: string, edited: boolean) => {
+      if (edited) {
+        const preview = generation.partPreview;
+        const chapter = preview ? chapters.find((item) => item.id === preview.chapterId) : null;
+        const before = chapter ? (partSpanOf(chapter.text)?.span ?? "") : "";
+        void partHistory.append({ textBefore: before, textAfter: draft, applied: false });
+        generation.discardPartPreview();
+      }
+      setPartPreviewDismissed(true);
+    },
+    [generation, partHistory, chapters],
+  );
+
+  /**
+   * A restore from history: the entry's text is applied exactly like a confirmed rewrite — the span between the
+   * markers becomes it, the markers wrap the result — and the step is recorded as a NEW applied entry. Restores never
+   * delete or truncate anything.
+   */
+  const restorePartHistory = useCallback(
+    (entryIndex: number) => {
+      const entry = partHistory.entries[entryIndex];
+      const chapterId = partMarkers.chapterId;
+      if (!entry || !chapterId || partMarkers.status.kind !== "ready") {
+        toast.error(t("part.history.restorePairMissing"));
+        return;
+      }
+      const chapter = chapters.find((item) => item.id === chapterId);
+      const before = chapter ? (partSpanOf(chapter.text)?.span ?? "") : "";
+      const changed = applyPartEdit(chapterId, (markdown) => applyPartRewrite(markdown, entry.textAfter));
+      if (!changed) {
+        toast.error(t("part.history.restorePairMissing"));
+        return;
+      }
+      void partHistory.append({ textBefore: before, textAfter: entry.textAfter, applied: true });
+      toast.success(t("part.history.restored"));
+      setPartHistoryOpen(false);
+    },
+    [partHistory, partMarkers, applyPartEdit, chapters, t],
+  );
+
+  // Leaving the mode does not drop a finished preview: its draft stays in the hook until applied or cancelled.
+  const startPartGeneration = useCallback(() => {
+    setPartPreviewDismissed(false);
+    void generation.rewritePart(partInstruction, partIncludeOriginal);
+  }, [generation, partInstruction, partIncludeOriginal]);
 
   // On phones the drawer covers the book: show the story the author just picked.
   const showStory = (id: string) => {
@@ -299,9 +501,9 @@ export function StoryWriterView({ capabilityProps }: { capabilityProps: Record<s
     if (await flush()) toast.success(t("stories.savedToast"));
     else toast.warning(t("stories.saveFailed"));
   };
-  const openLibrary = () => {
+  const openSection = (id: SidebarSectionId) => {
     setSidebarOpen(true);
-    setSectionRequest((current) => ({ id: "stories", nonce: (current?.nonce ?? 0) + 1 }));
+    setSectionRequest((current) => ({ id, nonce: (current?.nonce ?? 0) + 1 }));
   };
   const onKeyDown = (event: KeyboardEvent) => {
     // Ctrl/Cmd+S saves the story instead of opening the browser's "Save page" dialog.
@@ -332,7 +534,23 @@ export function StoryWriterView({ capabilityProps }: { capabilityProps: Record<s
       confirmLabel: t("actions.rewriteConfirm"),
       tone: "destructive",
     });
-    if (confirmed) void generation.write("rewrite");
+    if (!confirmed) return;
+    // A whole-chapter rewrite destroys the LAST chapter's text: its markers and its span history go with it. The
+    // history cleared is the rewritten chapter's — the pair's own chapter may sit somewhere earlier and keeps its
+    // versions (the rewritten text carries no tokens, so the pair dies with the chapter when it lived there).
+    if (lastChapter) void partHistory.clear(lastChapter.id);
+    void generation.write("rewrite");
+  };
+  const redoLatest = async () => {
+    const number = generation.redoChapter;
+    if (number === null) return;
+    const confirmed = await confirmAction({
+      title: t("actions.redoTitle"),
+      message: t("actions.redoMessage", { number }),
+      confirmLabel: t("actions.redoConfirm"),
+      tone: "destructive",
+    });
+    if (confirmed) void generation.redo();
   };
   const deleteChapter = async (chapterId: string) => {
     const number = chapters.findIndex((chapter) => chapter.id === chapterId) + 1;
@@ -344,6 +562,31 @@ export function StoryWriterView({ capabilityProps }: { capabilityProps: Record<s
     });
     if (confirmed) await doc.deleteChapter(chapterId);
   };
+  const hideNote = () => {
+    // The note unmounts with its hide button: focus held there goes to the action bar's toolbar, never to one of its
+    // buttons, where the next Enter would write or stop a chapter. The toolbar, not the dock: in short landscape the
+    // dock is display: contents and has no box to focus (Dottore, #2364).
+    const hadFocus =
+      document.activeElement instanceof HTMLElement && !!document.activeElement.closest(".sw-note-anchor");
+    setNoteOpen(false);
+    updatePreferences({ showAuthorNote: false });
+    toast.info(t("note.hidden"));
+    if (hadFocus)
+      requestAnimationFrame(() =>
+        dockRef.current?.querySelector<HTMLElement>(".sw-actionbar")?.focus({ preventScroll: true }),
+      );
+  };
+  const openPeek = () => {
+    peekOpener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setPeekOpen(true);
+  };
+  const closePeek = () => {
+    setPeekOpen(false);
+    // The view behind the dialog is inert until this render lands; focus goes back to the button after it.
+    requestAnimationFrame(() => peekOpener.current?.focus({ preventScroll: true }));
+  };
+  // Book and E-book paginate; the Document theme scrolls, with its own component in the same place.
+  const Reader = preferences.theme === "document" ? StoryDocument : StoryReader;
   const jumpToChapter = (chapterId: string) => {
     readerRef.current?.scrollToChapter(chapterId);
     // The drawer covers the book on phones.
@@ -374,14 +617,31 @@ export function StoryWriterView({ capabilityProps }: { capabilityProps: Record<s
       data-sw-sidebar={preferences.sidebarSide}
       data-sw-note={preferences.noteSide}
       data-sw-sidebar-open={sidebarOpen ? "true" : "false"}
+      data-sw-quick={showQuickReplies ? "true" : "false"}
+      data-sw-note-shown={preferences.showAuthorNote ? "true" : "false"}
       style={themeStyle}
       onKeyDown={onKeyDown}
     >
-      <div className="sw-frame">
+      <div className="sw-frame" inert={peekOpen || partHistoryOpen}>
         <div className="sw-stage" />
         <div className="sw-reader-slot">
+          {data && settings && partMode ? (
+            <PartModePanel
+              markersReady={partMarkers.status.kind === "ready"}
+              markersPresent={partMarkers.chapterId !== null}
+              canGenerate={generation.canWrite}
+              instruction={partInstruction}
+              includeOriginal={partIncludeOriginal}
+              historyCount={partHistory.entries.length}
+              onInstructionChange={setPartInstruction}
+              onIncludeOriginalChange={setPartIncludeOriginal}
+              onGenerate={startPartGeneration}
+              onReset={resetPartMarkers}
+              onOpenHistory={() => setPartHistoryOpen(true)}
+            />
+          ) : null}
           {data && settings ? (
-            <StoryReader
+            <Reader
               key={data.story.id}
               ref={readerRef}
               theme={preferences.theme}
@@ -393,6 +653,11 @@ export function StoryWriterView({ capabilityProps }: { capabilityProps: Record<s
               ghostChapterId={ghostChapterId}
               editable={generation.status === "idle"}
               mariImageUrl={assetUrl(STORY_WRITER_ASSETS.mari)}
+              chapterBarHost={chapterBarHost}
+              partModeActive={partMode}
+              partInvalid={partInvalid}
+              onPartClick={(chapterId, blockIndex) => handlePartClick(chapterId, blockIndex)}
+              onPartPinClick={handlePartPinClick}
               onChapterChange={onChapterChange}
               onStartChapter={onStartChapter}
             />
@@ -411,35 +676,53 @@ export function StoryWriterView({ capabilityProps }: { capabilityProps: Record<s
         </div>
         {data && settings ? (
           <>
-            <StickyNote
-              key={data.story.id}
-              side={preferences.noteSide}
-              text={settings.authorNote}
-              clearAfterChapter={settings.clearNoteAfterChapter}
-              depth={settings.authorNoteDepth}
-              open={noteOpen}
-              onOpenChange={setNoteOpen}
-              onChange={(authorNote) => doc.updateSettings({ authorNote })}
-              onDepthChange={(authorNoteDepth) => doc.updateSettings({ authorNoteDepth })}
-            />
-            <ActionBar
-              status={generation.status}
-              canWrite={generation.canWrite}
-              hasConnection={hasConnection || connectionsLoading}
-              chapterCount={chapters.length}
-              lastChapterDraft={lastChapter?.status === "draft"}
-              generatingChapterNumber={generatingIndex >= 0 ? generatingIndex + 1 : null}
-              liveWords={generation.liveWords}
-              totalWords={totalWords}
-              targetWords={settings.targetWords}
-              fullscreen={fullscreen}
-              onWrite={() => void generation.write("next")}
-              onContinue={() => void generation.write("continue")}
-              onRewrite={() => void rewriteLastChapter()}
-              onStop={generation.stop}
-              onOpenLibrary={openLibrary}
-              onFinishChapter={() => void finishChapter()}
-            />
+            <div ref={setChapterBarHost} className="sw-chapterbar" />
+            {preferences.showAuthorNote ? (
+              <StickyNote
+                key={data.story.id}
+                side={preferences.noteSide}
+                text={settings.authorNote}
+                clearAfterChapter={settings.clearNoteAfterChapter}
+                depth={settings.authorNoteDepth}
+                open={noteOpen}
+                onOpenChange={setNoteOpen}
+                onChange={(authorNote) => doc.updateSettings({ authorNote })}
+                onDepthChange={(authorNoteDepth) => doc.updateSettings({ authorNoteDepth })}
+                onHide={hideNote}
+              />
+            ) : null}
+            <div ref={dockRef} className="sw-dock">
+              <ActionBar
+                status={generation.status}
+                canWrite={generation.canWrite}
+                hasConnection={hasConnection || connectionsLoading}
+                chapterCount={chapters.length}
+                lastChapterDraft={lastChapter?.status === "draft"}
+                canRedo={generation.redoChapter !== null}
+                generatingChapterNumber={generatingIndex >= 0 ? generatingIndex + 1 : null}
+                liveWords={generation.liveWords}
+                totalWords={totalWords}
+                targetWords={settings.targetWords}
+                fullscreen={fullscreen}
+                partMode={partModeControl}
+                onWrite={() => void generation.write("next")}
+                onContinue={() => void generation.write("continue")}
+                onRewrite={() => void rewriteLastChapter()}
+                onRedo={() => void redoLatest()}
+                onStop={generation.stop}
+                onOpenLibrary={() => openSection("stories")}
+                onFinishChapter={() => void finishChapter()}
+              />
+              {showQuickReplies ? (
+                <QuickReplyBar
+                  replies={preferences.quickReplies}
+                  canWrite={generation.canWrite}
+                  hasConnection={hasConnection || connectionsLoading}
+                  onSend={(request) => void generation.write("next", request)}
+                  onEdit={() => openSection("quickReplies")}
+                />
+              ) : null}
+            </div>
           </>
         ) : null}
         <StorySidebar
@@ -467,9 +750,33 @@ export function StoryWriterView({ capabilityProps }: { capabilityProps: Record<s
           onManageConnections={manageConnections}
           onJumpToChapter={jumpToChapter}
           onDeleteChapter={(chapterId) => void deleteChapter(chapterId)}
+          onPeekPrompt={openPeek}
           totalWords={totalWords}
         />
       </div>
+      {peekOpen ? <PromptPeekDialog load={generation.peekPrompt} onClose={closePeek} /> : null}
+      {data && settings && showPartPreview && partPreview ? (
+        <PartPreviewDialog
+          preview={partPreview}
+          streaming={partStreaming}
+          theme={preferences.theme}
+          pageAnimation={preferences.pageAnimation}
+          storyTitle={storyDisplayTitle(settings, t("app.untitled"))}
+          storyDetails={storyDetails}
+          onStop={generation.stop}
+          onApply={applyPartPreview}
+          onClose={cancelPartPreview}
+        />
+      ) : null}
+      {data && settings && partHistoryOpen && partMarkers.chapterId ? (
+        <PartHistoryDialog
+          entries={partHistory.entries}
+          isLoading={partHistory.isLoading}
+          chapterNumber={chapters.findIndex((chapter) => chapter.id === partMarkers.chapterId) + 1}
+          onRestore={restorePartHistory}
+          onClose={() => setPartHistoryOpen(false)}
+        />
+      ) : null}
     </div>
   );
 }

@@ -275,8 +275,9 @@ test("POST /runs checks the setup and the 18+ gate, then writes the run and star
     [
       ["world-plan", "pending"],
       ...ids.map((id) => [`bible:${id}`, "pending"]),
-      ...ids.map((id) => [`paint:${id}`, "waiting-consent"]),
-      ["paint:player", "waiting-consent"],
+      // With an image connection, and neither Ask before painting nor prompt review, each look paints by itself.
+      ...ids.map((id) => [`paint:${id}`, "pending"]),
+      ["paint:player", "pending"],
     ],
   );
   const archetype = (await store.readDoc(unitId(runId, ids[2]!), normalizeUnit))!;
@@ -310,6 +311,22 @@ test("POST /runs checks the setup and the 18+ gate, then writes the run and star
   assert.ok(plain.body.view.forge.steps.every((step: { id: string }) => !step.id.startsWith("paint:")));
   assert.equal(plain.body.view.world.content.heat, "explicit");
   await forgeSettled(runIdOf(plain.body.run));
+
+  // Ask before painting, or the Engine's prompt review, holds every look for the tap.
+  for (const body of [
+    { setup: setupInput({ images: { ...base.images, ask: true } }) },
+    { setup: base, reviewImagePrompts: true },
+  ]) {
+    const held = await call("POST", "/runs", { body });
+    assert.equal(held.status, 200);
+    assert.deepEqual(
+      held.body.view.forge.steps
+        .filter((step: { id: string }) => step.id.startsWith("paint:"))
+        .map((step: { state: string }) => step.state),
+      ["waiting-consent", "waiting-consent", "waiting-consent", "waiting-consent"],
+    );
+    await forgeSettled(runIdOf(held.body.run));
+  }
 });
 
 test("GET /runs/:run shows a forge step a restart left running as failed", async () => {
@@ -695,6 +712,29 @@ test("delete: the typed title must match; then every document of the run and its
     bare.logs.filter((entry) => entry.level === "warn").map((entry) => entry.args),
     [[RUN_KEY, 2]],
   );
+});
+
+test("delete sweeps Tarot night's readings and deck, and the deck's painted cards (#2151)", async () => {
+  const { call, fake, run, deleted, store } = await setup();
+  const runId = runIdOf(RUN_KEY);
+  const card = { state: "ready", at, url: "/api/global-gallery/file/card-1.png", ref: "global-gallery:card-1" };
+  await store.mutateDoc(
+    runDocTarget("deck", `${runId}:deck`),
+    (data) => data,
+    () => ({ version: 1, cards: { fool: { card: "fool", figure: "you", art: card } } }),
+  );
+  await store.mutateDoc(
+    runDocTarget("tarot", `${runId}:tarot:tr-abc123-aaaaaa`),
+    (data) => data,
+    () => ({ id: "tr-abc123-aaaaaa" }),
+  );
+  const removed = await call("POST", "/runs/:run/delete", { params: run, body: { confirmTitle: "Moonlit Court" } });
+  assert.equal(removed.status, 200);
+  assert.deepEqual(
+    [...fake.rows.keys()].filter((id) => id.startsWith(`${runId}:`)),
+    [],
+  );
+  assert.deepEqual(deleted.sort(), ["card-1", "kai-1", "player-1"]);
 });
 
 for (const stop of ["a storage error", "a restart"]) {

@@ -116,8 +116,8 @@ export function validatePullRequestTriage() {
           BASE_REF: "main",
           AUTHOR_LOGIN: "SpicyMarinara",
           HEAD_REF: "hotfix/example",
-          HEAD_REPO: "Pasta-Devs/Marinara-Agents",
-          REPOSITORY: "Pasta-Devs/Marinara-Agents",
+          HEAD_REPO: "HackZers7/Marinara-Agents",
+          REPOSITORY: "HackZers7/Marinara-Agents",
           ...overrides,
         },
       });

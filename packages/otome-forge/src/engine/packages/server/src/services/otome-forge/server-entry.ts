@@ -7,9 +7,11 @@ import { forgeTimeZoneRoutes } from "@forge-kit/time-zone-server.mjs";
 import type { CapabilityRuntimeHost } from "@marinara-engine/shared";
 import { createOtomeArt } from "./art/expressions.js";
 import { createBackgroundQueue } from "./background-queue.js";
+import { createOtomeHaptics } from "./haptics.js";
 import { createHandle, type OtomeRouter, type RouteDeps } from "./http.js";
 import { INDEX_ID } from "./ids.js";
 import { createOtomeMemory } from "./memory/memory.js";
+import { createRecallIndex } from "./memory/recall-index.js";
 import { registerAlbumRoutes } from "./routes/album.js";
 import { registerArcRoutes } from "./routes/arcs.js";
 import { registerArtRoutes } from "./routes/art.js";
@@ -17,16 +19,21 @@ import { registerAudioRoutes } from "./routes/audio.js";
 import { registerCareRoutes } from "./routes/care.js";
 import { registerClawRoutes } from "./routes/claw.js";
 import { registerDateRoutes } from "./routes/dates.js";
+import { registerHapticsRoutes } from "./routes/haptics.js";
 import { registerHomeRoutes } from "./routes/home.js";
 import { registerIndexRoutes } from "./routes/index.js";
 import { registerItemRoutes } from "./routes/items.js";
+import { registerKittyRoutes } from "./routes/kitty.js";
 import { registerMemoryRoutes } from "./routes/memory.js";
 import { registerPhoneRoutes } from "./routes/phone.js";
+import { registerQuizRoutes } from "./routes/quiz.js";
 import { registerReadHimRoutes } from "./routes/read-him.js";
 import { registerReadMeRoutes } from "./routes/read-me.js";
 import { registerRunRoutes } from "./routes/runs.js";
 import { registerSetupRoutes } from "./routes/setup.js";
+import { registerShopRoutes } from "./routes/shop.js";
 import { registerStoryRoutes } from "./routes/story.js";
+import { registerTarotRoutes } from "./routes/tarot.js";
 import { registerWardrobeRoutes } from "./routes/wardrobe.js";
 import { registerWishRoutes } from "./routes/wish.js";
 import { normalizeIndex } from "./schemas/index.js";
@@ -48,13 +55,22 @@ export async function activate({ api }: ActivationContext) {
   const { runtime } = api;
   const store = createOtomeStore(runtime.persistence.documents);
   const handle = createHandle(runtime.logger);
-  // One background lane (memory summaries and line packs), one story memory, one Cancel and one art service (faces,
-  // places, CGs; M2b) per activation.
+  // One background lane (memory summaries and line packs), one story memory with its long-term recall index, one Cancel
+  // and one art service (faces, places, CGs; M2b) per activation.
   const background = createBackgroundQueue(runtime);
-  const memory = createOtomeMemory({ runtime, store, background });
+  const recall = createRecallIndex({ runtime, store, background });
+  // What each memory upkeep job summarized is indexed for long-term recall after it, in the background.
+  const afterUpkeep = (runId: string) =>
+    void recall
+      .ensure(runId)
+      .catch((error: unknown) =>
+        runtime.logger.warn("[otome-forge] Recall index: %s", error instanceof Error ? error.message : String(error)),
+      );
+  const memory = createOtomeMemory({ runtime, store, background, afterUpkeep });
   const cancellation = createForgeStoryCancellation();
   const art = createOtomeArt({ runtime, store });
-  const deps: RouteDeps = { runtime, store, handle, memory, cancellation, art, background };
+  const haptics = createOtomeHaptics(runtime);
+  const deps: RouteDeps = { runtime, store, handle, memory, recall, cancellation, art, background, haptics };
   // Wish's banner art paints in the background (M4); after teardown nothing more is paid for.
   let disposed = false;
   const active = () => !disposed;
@@ -70,18 +86,23 @@ export async function activate({ api }: ActivationContext) {
       registerArcRoutes(router, deps);
       registerArtRoutes(router, deps);
       registerAudioRoutes(router, deps);
-      registerMemoryRoutes(router, { store, handle, memory });
+      registerMemoryRoutes(router, { store, handle, memory, recall });
       registerHomeRoutes(router, deps);
       registerPhoneRoutes(router, deps);
       registerWishRoutes(router, deps, { active });
+      registerShopRoutes(router, deps);
       registerItemRoutes(router, deps);
       registerWardrobeRoutes(router, deps);
       registerAlbumRoutes(router, deps);
       registerCareRoutes(router, deps);
       registerClawRoutes(router, deps);
+      registerKittyRoutes(router, deps);
       registerReadHimRoutes(router, deps);
       registerReadMeRoutes(router, deps);
+      registerTarotRoutes(router, deps);
+      registerQuizRoutes(router, deps);
       registerDateRoutes(router, deps);
+      registerHapticsRoutes(router, deps);
     },
     { prefix: "/api/otome-forge" },
   );
@@ -90,16 +111,18 @@ export async function activate({ api }: ActivationContext) {
     if (activeStore === store) activeStore = null;
     // Nothing more is paid for after teardown: queued faces, scene paints and banner art stop before their paid call.
     disposed = true;
+    haptics.dispose();
     art.dispose();
     cancellation.dispose();
     memory.dispose();
+    recall.dispose();
     background.dispose();
     await releaseRoutes();
   };
 }
 
 export async function selfCheck() {
-  if (!activeStore) throw new Error("Otome Forge routes did not activate");
+  if (!activeStore) throw new Error("Otome Hearth routes did not activate");
   // Reads the index, so broken storage fails here instead of on the first request.
   await activeStore.readDoc(INDEX_ID, normalizeIndex);
 }

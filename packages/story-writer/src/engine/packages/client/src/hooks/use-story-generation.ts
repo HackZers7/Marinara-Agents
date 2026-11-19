@@ -16,20 +16,27 @@ import {
   type StoryWithChapters,
 } from "../lib/story-writer/model";
 import {
-  buildChapterMessages,
+  findStoryPartMarkers,
+  partContextExcerpt,
+  partSpanOf,
+  PART_CONTEXT_CHARS,
+} from "../lib/story-writer/part-markers";
+import {
   buildSummaryMessages,
   buildTimelineMessages,
-  chapterTokenBudget,
-  continueMessageOf,
   createClientId,
   endsMidSentence,
   findBannedPhrases,
   joinContinuation,
   parseTimelineResponse,
+  planChapter,
+  planRewriteSpan,
   tokenBudget,
   visibleStreamingText,
   type ChatMessage,
+  type PromptSources,
 } from "../lib/story-writer/prompt";
+import { recordGeneration, redoOffer, type LatestGeneration } from "../lib/story-writer/redo";
 import {
   loadPromptCharacters,
   loadPromptLore,
@@ -39,7 +46,29 @@ import {
 } from "./use-engine-resources";
 import { storyWriterKeys, type StoryDocumentApi } from "./use-story-writer";
 
-export type GenerationStatus = "idle" | "writing" | "summarizing" | "timeline";
+export type GenerationStatus = "idle" | "writing" | "summarizing" | "timeline" | "part";
+
+/** A Rewrite Part run's preview: the marked span streaming in, with its surrounding context. */
+export interface PartPreview {
+  chapterId: string;
+  chapterNumber: number;
+  /** Token-free Markdown, shown gray and read-only on each side of the draft. */
+  contextBefore: string;
+  contextAfter: string;
+  /** The streamed replacement text so far. */
+  draft: string;
+  /** Words in the draft so far. */
+  words: number;
+}
+
+/** The prompt the Engine would send for the primary Write button, as its raw route answers `returnPrompt`. */
+export interface PromptPeek {
+  mode: "next" | "continue";
+  chapterNumber: number;
+  model: string;
+  maxTokens: number | null;
+  messages: Array<{ role: string; content: string }>;
+}
 
 export interface StoryGenerationApi {
   status: GenerationStatus;
@@ -48,7 +77,29 @@ export interface StoryGenerationApi {
   liveWords: number;
   /** A connection is selected or available and nothing is running. */
   canWrite: boolean;
-  write(mode: "next" | "continue" | "rewrite"): Promise<void>;
+  /** `request` (a quick reply) is sent in place of the continue message; a new chapter stores it as its request. */
+  write(mode: "next" | "continue" | "rewrite", request?: string): Promise<void>;
+  /** The chapter Redo would write again, or null when Redo is not offered (see redoOffer). */
+  redoChapter: number | null;
+  /** Takes back what the latest generation wrote and writes it again with the same instruction. */
+  redo(): Promise<void>;
+  /**
+   * What the primary Write button would send right now, without writing: no run, no status, no chapter change.
+   * Null when there is no story or no connection.
+   */
+  peekPrompt(signal: AbortSignal): Promise<PromptPeek | null>;
+  /** The Rewrite Part preview while a span rewrite runs, else null. The book itself never changes during the run. */
+  partPreview: PartPreview | null;
+  /**
+   * Rewrites the story's marked span into the preview. The instruction is required and the pair must be valid; the
+   * story stays untouched: the draft is applied (or dropped) only after the run ends.
+   */
+  rewritePart(instruction: string, includeOriginal: boolean): Promise<void>;
+  /**
+   * Drops a finished preview's draft: after its text was applied to the chapter, or when the author cancels a draft
+   * they hand-edited. The single place a draft goes away outside a run, so version history (ticket 04) can take over.
+   */
+  discardPartPreview(): void;
   stop(): void;
   summarizeChapter(chapterId: string): Promise<void>;
   summarizeOlderChapters(): Promise<void>;
@@ -58,7 +109,6 @@ export interface StoryGenerationApi {
 const SUMMARY_MAX_TOKENS = 1_200;
 const TIMELINE_MAX_TOKENS = 3_000;
 const SAVE_EVERY_MS = 3_000;
-const LORE_SCAN_CHARS = 150_000;
 
 interface Run {
   storyId: string;
@@ -80,6 +130,8 @@ interface OperationContext {
   readStory(): StoryWithChapters | null;
   setStatus(status: GenerationStatus): void;
   setLive(chapterId: string | null, words: number): void;
+  /** Sets or clears the Rewrite Part preview; clearing drops the draft. */
+  setPartPreview(preview: PartPreview | null): void;
 }
 
 interface Completion {
@@ -107,12 +159,30 @@ function pickConnection(connections: ConnectionOption[], settings: StorySettings
   return connections.find((connection) => connection.id === id) ?? null;
 }
 
-/** Text the Engine's lorebook scanner reads: the overview, the note and the latest chapters, newest text kept. */
-function loreScanText(settings: StorySettings, chapters: StoryChapter[]): string {
-  return [settings.overview, settings.authorNote, ...chapters.slice(-3).map((chapter) => chapter.text)]
-    .filter((part) => part.trim())
-    .join("\n\n")
-    .slice(-LORE_SCAN_CHARS);
+function promptSources(queryClient: QueryClient): PromptSources {
+  return {
+    characters: (ids) => loadPromptCharacters(queryClient, ids),
+    personas: (ids) => loadPromptPersonas(queryClient, ids),
+    lore: loadPromptLore,
+  };
+}
+
+function rowOf(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+}
+
+/** The raw route's `returnPrompt` answer: `{ prompt: { messages }, parameters: { model, maxTokens, ... } }`. */
+function readPromptPeek(value: unknown): Pick<PromptPeek, "model" | "maxTokens" | "messages"> {
+  const parameters = rowOf(rowOf(value).parameters);
+  const list = rowOf(rowOf(value).prompt).messages;
+  return {
+    model: typeof parameters.model === "string" ? parameters.model : "",
+    maxTokens: typeof parameters.maxTokens === "number" ? parameters.maxTokens : null,
+    messages: (Array.isArray(list) ? list : []).flatMap((item) => {
+      const { role, content } = rowOf(item);
+      return typeof role === "string" && typeof content === "string" ? [{ role, content }] : [];
+    }),
+  };
 }
 
 /** Older chapters (outside the last N the next chapter sees in full) that have text but no summary yet. */
@@ -241,29 +311,111 @@ async function refreshTimeline(context: OperationContext): Promise<number | null
   return events.length;
 }
 
-async function writeChapter(context: OperationContext, requested: "next" | "continue" | "rewrite"): Promise<void> {
+/**
+ * Streams a Rewrite Part run into the preview. The story is never touched: an abort discards the draft with a
+ * notification while the mode and markers stay, and a finished draft stays in the preview for ticket 03 to apply.
+ */
+async function writePart(context: OperationContext, instruction: string, includeOriginal: boolean): Promise<void> {
+  const { run, connection, t } = context;
+  const story = context.readStory();
+  if (!story) return;
+  const markers = findStoryPartMarkers(story.chapters);
+  const chapter = story.chapters.find((item) => item.id === markers.chapterId);
+  const span = chapter ? partSpanOf(chapter.text) : null;
+  if (!chapter || !span || markers.status.kind !== "ready") {
+    toast.error(t("part.generatePairMissing"));
+    return;
+  }
+  const plan = await planRewriteSpan({
+    settings: story.story.settings,
+    chapters: story.chapters,
+    chapter,
+    span,
+    instruction,
+    includeOriginal,
+    savedMaxTokens: connection.savedMaxTokens,
+    sources: promptSources(context.queryClient),
+  });
+  if (run.controller.signal.aborted) return;
+
+  const fixed: PartPreview = {
+    chapterId: chapter.id,
+    chapterNumber: plan.chapterNumber,
+    contextBefore: partContextExcerpt(span.before, PART_CONTEXT_CHARS, "end"),
+    contextAfter: partContextExcerpt(span.after, PART_CONTEXT_CHARS, "start"),
+    draft: "",
+    words: 0,
+  };
+  context.setPartPreview({ ...fixed });
+
+  let pendingRaw = "";
+  let cancelFrame = null as (() => void) | null;
+  const onText = (raw: string) => {
+    pendingRaw = raw;
+    // One state write per frame, the same throttle the chapter stream uses.
+    cancelFrame ??= scheduleFrame(() => {
+      cancelFrame = null;
+      const visible = visibleStreamingText(pendingRaw).trimStart();
+      context.setPartPreview({ ...fixed, draft: visible, words: countWords(visible) });
+    });
+  };
+
+  let result: Completion;
+  let failure: unknown = null;
+  try {
+    result = await complete(context, plan.messages, plan.maxTokens, context.streaming ? onText : undefined);
+  } catch (error) {
+    failure = error;
+    const partial = (error as { partial?: unknown } | null)?.partial;
+    result = { content: typeof partial === "string" ? partial : pendingRaw, aborted: false, finished: false };
+  } finally {
+    cancelFrame?.();
+  }
+
+  if (result.aborted) {
+    // The Stop control: the draft goes away with a notification; mode and markers stay in place.
+    context.setPartPreview(null);
+    toast.info(t("part.generateAborted"));
+    return;
+  }
+  const draft = visibleStreamingText(result.content).trim().slice(0, LIMITS.chapterText);
+  if (!draft) {
+    context.setPartPreview(null);
+    if (failure) throw failure;
+    toast.error(t("generation.errors.empty"));
+    return;
+  }
+  context.setPartPreview({ ...fixed, draft, words: countWords(draft) });
+  const banned = findBannedPhrases(draft, story.story.settings.bannedPhrases);
+  if (banned.length) toast.warning(t("generation.bannedPhrases", { phrases: banned.join(", ") }));
+  if (failure) throw failure;
+}
+
+async function writeChapter(
+  context: OperationContext,
+  requested: "next" | "continue" | "rewrite",
+  override: string | undefined,
+  /** Called once the run has saved what it wrote, before any follow-up. */
+  onWritten: (record: LatestGeneration) => void,
+): Promise<void> {
   const { run, connection, t } = context;
   const doc = run.doc;
   const story = context.readStory();
   if (!story) return;
   const settings = story.story.settings;
-  const chapters = story.chapters;
-  const last = chapters[chapters.length - 1];
-  const original = requested === "rewrite" ? (last ?? null) : null;
-  const mode: "next" | "continue" = !last || (requested === "next" && last.status !== "draft") ? "next" : "continue";
-  // A rewrite is written from an emptied last chapter, so the prompt treats it as a new chapter.
-  const promptChapters = original ? [...chapters.slice(0, -1), { ...original, text: "", summary: "" }] : chapters;
-  const chapterNumber = mode === "next" ? chapters.length + 1 : chapters.length;
-
+  const last = story.chapters[story.chapters.length - 1];
+  // A chapter run supersedes any finished part preview: its draft belongs to a story state that is changing.
+  context.setPartPreview(null);
   // Cast and lore load before the story changes, so a failure here leaves it as it was.
-  const [characters, personas, lore] = await Promise.all([
-    loadPromptCharacters(context.queryClient, settings.characterIds),
-    loadPromptPersonas(context.queryClient, settings.personaIds),
-    loadPromptLore(settings.lorebookIds, loreScanText(settings, promptChapters)),
-  ]);
+  const { mode, original, chapterNumber, request, messages, maxTokens } = await planChapter({
+    settings,
+    chapters: story.chapters,
+    requested,
+    quickReply: override,
+    savedMaxTokens: connection.savedMaxTokens,
+    sources: promptSources(context.queryClient),
+  });
   if (run.controller.signal.aborted) return;
-  const messages = buildChapterMessages({ settings, chapters: promptChapters, mode, characters, personas, lore });
-  const request = continueMessageOf(settings);
 
   let target: StoryChapter;
   if (mode === "next") {
@@ -307,12 +459,7 @@ async function writeChapter(context: OperationContext, requested: "next" | "cont
   let result: Completion;
   let failure: unknown = null;
   try {
-    result = await complete(
-      context,
-      messages,
-      chapterTokenBudget(settings.chapterWords, connection.savedMaxTokens),
-      context.streaming ? onText : undefined,
-    );
+    result = await complete(context, messages, maxTokens, context.streaming ? onText : undefined);
   } catch (error) {
     failure = error;
     const partial = (error as { partial?: unknown } | null)?.partial;
@@ -344,6 +491,8 @@ async function writeChapter(context: OperationContext, requested: "next" | "cont
   // A stopped, failed or cut-off chapter stays a draft, so Write continues it instead of starting the next one.
   const finished = result.finished && !result.aborted && !failure && !endsMidSentence(finalText);
   await doc.saveChapter(chapterId, { text: finalText, status: finished ? "complete" : "draft" }, { immediate: true });
+  const record = recordGeneration(story, { requested, override, chapterId, after: finalText });
+  onWritten(record);
 
   const banned = findBannedPhrases(addition, settings.bannedPhrases);
   if (banned.length) toast.warning(t("generation.bannedPhrases", { phrases: banned.join(", ") }));
@@ -360,6 +509,7 @@ async function writeChapter(context: OperationContext, requested: "next" | "cont
   // Clear only the note this chapter was written with; a note typed during the stream is meant for the next one.
   if (now.clearNoteAfterChapter && now.authorNote && now.authorNote === settings.authorNote) {
     doc.updateSettings({ authorNote: "" }, { immediate: true });
+    onWritten({ ...record, clearedNote: settings.authorNote });
   }
   context.setLive(null, 0);
   if (now.autoSummarize) {
@@ -381,6 +531,12 @@ export function useStoryGeneration(args: {
   const [status, setStatus] = useState<GenerationStatus>("idle");
   const [generatingChapterId, setGeneratingChapterId] = useState<string | null>(null);
   const [liveWords, setLiveWords] = useState(0);
+  // ponytail: one record per mounted Story Writer, for the open story, in memory: a reload or opening another story
+  // forgets it. Upgrade path: keep it on the story document.
+  const [latestGeneration, setLatestGeneration] = useState<LatestGeneration | null>(null);
+  const activeStoryId = doc.data?.story.id ?? null;
+  if (latestGeneration && latestGeneration.storyId !== activeStoryId) setLatestGeneration(null);
+  const [partPreview, setPartPreview] = useState<PartPreview | null>(null);
   const latest = useRef({ doc, streaming, debugMode, connections, t });
   const runRef = useRef<Run | null>(null);
 
@@ -432,6 +588,7 @@ export function useStoryGeneration(args: {
             setGeneratingChapterId(chapterId);
             setLiveWords(words);
           },
+          setPartPreview,
         });
       } catch (error) {
         if (!run.controller.signal.aborted && !isAbortError(error)) {
@@ -448,8 +605,79 @@ export function useStoryGeneration(args: {
   );
 
   const write = useCallback(
-    (mode: "next" | "continue" | "rewrite") => operate("writing", (context) => writeChapter(context, mode)),
+    (mode: "next" | "continue" | "rewrite", request?: string) =>
+      operate("writing", (context) => writeChapter(context, mode, request, setLatestGeneration)),
     [operate],
+  );
+
+  const redo = useCallback(
+    () =>
+      operate("writing", async (context) => {
+        const record = latestGeneration;
+        // The story as it is now, with every edit saved: one made since Redo was shown withdraws it.
+        if (!record || redoOffer(record, context.readStory()) === null) return;
+        const { chapterId, before, requested, override, clearedNote } = record;
+        const runDoc = context.run.doc;
+        // Put the chapter back as it was before that generation. A restore that fails has been reported; nothing
+        // is written over it.
+        if (before) {
+          await runDoc.saveChapter(chapterId, before, { immediate: true });
+          if (!(await runDoc.flush())) {
+            toast.warning(context.t("stories.saveFailed"));
+            return;
+          }
+        } else if (!(await runDoc.deleteChapter(chapterId))) {
+          return;
+        }
+        // The note that generation cleared comes back too, so it is sent again, unless the author has written another.
+        if (clearedNote && !context.readStory()?.story.settings.authorNote) {
+          runDoc.updateSettings({ authorNote: clearedNote }, { immediate: true });
+        }
+        await writeChapter(context, requested, override, setLatestGeneration);
+      }),
+    [operate, latestGeneration],
+  );
+
+  const rewritePart = useCallback(
+    (instruction: string, includeOriginal: boolean) =>
+      operate("part", (context) => writePart(context, instruction, includeOriginal)),
+    [operate],
+  );
+
+  const discardPartPreview = useCallback(() => setPartPreview(null), []);
+  // Outside operate(): a peek takes no run, sets no status and never touches a chapter.
+  const peekPrompt = useCallback(
+    async (signal: AbortSignal): Promise<PromptPeek | null> => {
+      const { doc: current, connections: options } = latest.current;
+      const storyId = current.data?.story.id;
+      const story = storyId
+        ? (queryClient.getQueryData<StoryWithChapters>(storyWriterKeys.story(storyId)) ?? current.data)
+        : null;
+      if (!story) return null;
+      const connection = pickConnection(options, story.story.settings);
+      if (!connection) return null;
+      // The primary Write button: the next chapter, or the draft it continues.
+      const plan = await planChapter({
+        settings: story.story.settings,
+        chapters: story.chapters,
+        requested: "next",
+        savedMaxTokens: connection.savedMaxTokens,
+        sources: promptSources(queryClient),
+      });
+      // returnPrompt (Engine 2.2.0+) answers with the merged, context-fitted messages before any provider call.
+      const result = await api.post<unknown>(
+        "/generate/raw",
+        {
+          connectionId: connection.id,
+          messages: plan.messages,
+          parameters: { maxTokens: plan.maxTokens },
+          returnPrompt: true,
+        },
+        { signal },
+      );
+      return { mode: plan.mode, chapterNumber: plan.chapterNumber, ...readPromptPeek(result) };
+    },
+    [queryClient],
   );
 
   const summarizeChapter = useCallback(
@@ -491,13 +719,13 @@ export function useStoryGeneration(args: {
   );
 
   // A run belongs to the story it started on: switching or deleting that story, or leaving the page, stops it.
-  const activeStoryId = doc.data?.story.id ?? null;
   useEffect(() => {
     if (runRef.current && runRef.current.storyId !== activeStoryId) stop();
   }, [activeStoryId, stop]);
   useEffect(() => stop, [stop]);
 
   const canWrite = status === "idle" && !!doc.data && !!pickConnection(connections, doc.data.story.settings);
+  const redoChapter = canWrite ? redoOffer(latestGeneration, doc.data) : null;
 
   return {
     status,
@@ -505,6 +733,12 @@ export function useStoryGeneration(args: {
     liveWords,
     canWrite,
     write,
+    redoChapter,
+    redo,
+    peekPrompt,
+    partPreview,
+    rewritePart,
+    discardPartPreview,
     stop,
     summarizeChapter,
     summarizeOlderChapters,

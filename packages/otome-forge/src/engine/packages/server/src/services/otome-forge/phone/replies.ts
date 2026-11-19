@@ -5,10 +5,17 @@
 // routes, the sticker names P17 lists and its parser matches (#2044: either order; a sticker-shaped name that is not
 // listed is dropped), and the checks that send the repair turn: a message written as the protagonist or a reply with
 // nothing in it, and a P18 quote the conversation does not hold word for word.
+// The group chat (#2154): P17g's reply names each message's speaker, a member matched by sameName; a message written
+// as the protagonist, by anyone else, or a reply with nothing in it gets the repair turn, and so does a squabble from
+// one speaker alone, or a reply with nothing from a member the protagonist's newest message names (the maintainer's
+// rule: whoever is named answers). Each speaker sends at most one sticker in a reply, their own or the protagonist's.
 import { z, type ZodType } from "zod";
+import type { HapticCue } from "../../../../../client/src/features/otome-forge/shared/api-types.js";
 import { sameName } from "../../../../../client/src/features/otome-forge/shared/faces.js";
+import { normalizeHapticCues } from "../../../../../client/src/features/otome-forge/shared/haptics.js";
 import { NOTE_TEXT_MAX } from "../../../../../client/src/features/otome-forge/shared/home.js";
 import type { StickerLookup } from "../art/stickers.js";
+import { fold, nameCore } from "../names.js";
 
 /** A message's text, the player's or his (the route's body limit, and the cut on his). */
 export const MESSAGE_TEXT_MAX = 1000;
@@ -23,9 +30,16 @@ export const MEMORY_QUOTE_MAX = 200;
 const chars = (value: string) => [...value].length;
 const squash = (value: string) => value.normalize("NFKC").toLocaleLowerCase().replace(/\s+/gu, " ").trim();
 
+/**
+ * A colon that ends a speaker's name: any colon but one that opens an emoticon (":(", ":D", ":3", ":-P", ":(("), with
+ * only a space or the line's end after it. 0.36.8 (#2394): the chat prompts ask for emoticons, and "ines :(" is his
+ * message to her, not a line written as her.
+ */
+const SPEAKER_COLON = /[:：](?!-?[()DPpOo03/\\|*[\]<>@$xX]+(?:\s|$))/u;
+
 /** "Name: rest" when a line opens with a speaker's name (within 60 characters), otherwise null. */
 function speakerPrefix(text: string): { speaker: string; rest: string } | null {
-  const colon = text.search(/[:：]/u);
+  const colon = text.search(SPEAKER_COLON);
   if (colon <= 0 || colon > 60) return null;
   return { speaker: text.slice(0, colon).trim(), rest: text.slice(colon + 1).trim() };
 }
@@ -87,21 +101,29 @@ export function stickerMatcher(listed: readonly ReplySticker[]): (token: string)
 
 /** P17's reply as the model sends it (nulls allowed); normalizeChatReply makes it a ChatReply. */
 export interface ChatReplyRaw {
-  messages: Array<{ text?: string | null; sticker?: string | null }>;
+  messages: Array<{ text?: string | null; sticker?: string | null; haptic?: unknown }>;
+  invite?: boolean | null;
 }
 
 export interface ChatReply {
-  /** `sticker` is a listed sticker's id (S/art/stickers.ts). */
-  messages: Array<{ text: string; sticker?: string }>;
+  /** `sticker` is a listed sticker's id (S/art/stickers.ts); `haptic` (0.34.0) only while he holds the remote. */
+  messages: Array<{ text: string; sticker?: string; haptic?: HapticCue[] }>;
+  /** #2156: his last message asks her out to clear the air (kept only when P17 offered it). */
+  invite?: true;
 }
 
 export const ChatReplySchema: ZodType<ChatReplyRaw> = z.object({
   messages: z
     .array(
-      z.object({ text: z.string().max(4000).nullable().optional(), sticker: z.string().max(40).nullable().optional() }),
+      z.object({
+        text: z.string().max(4000).nullable().optional(),
+        sticker: z.string().max(40).nullable().optional(),
+        haptic: z.unknown().optional(),
+      }),
     )
     .min(1)
     .max(8),
+  invite: z.boolean().nullable().optional(),
 });
 
 /**
@@ -109,54 +131,167 @@ export const ChatReplySchema: ZodType<ChatReplyRaw> = z.object({
  * MESSAGE_TEXT_MAX). A message
  * written as the protagonist, or a reply with nothing in it, is refused (the repair turn names why). A sticker is the
  * first bracketed name of `listed` in the reply (either order; a `sticker` field is read the same way); every other
- * sticker-shaped bracketed name is taken out of the text, and other bracketed text stays.
+ * sticker-shaped bracketed name is taken out of the text, and other bracketed text stays. `invite` (#2156) is kept
+ * only when P17 offered it (`offered`); a message's haptic cues (0.34.0) only while he holds the remote (`remote`).
  */
 export function normalizeChatReply(
   raw: ChatReplyRaw,
   names: ThreadNames,
   listed: readonly ReplySticker[] = [],
+  offered = false,
+  remote = false,
 ): ChatReply | string {
   const messages: ChatReply["messages"] = [];
   const match = stickerMatcher(listed);
   let stickers = 0;
   for (const entry of raw.messages) {
-    let text = (entry.text ?? "").trim();
-    let sticker: string | undefined;
-    const take = (id: string | null) => {
-      if (id && stickers === 0) {
-        sticker = id;
-        stickers += 1;
-      }
-    };
-    const before = text;
-    text = text.replace(BRACKETED, (whole, inner: string) => {
-      const id = match(inner);
-      take(id);
-      return id || STICKER_SHAPED.test(folded(inner)) ? " " : whole;
-    });
-    if (text !== before)
-      text = text
-        .replace(/[ \t]+/g, " ")
-        .replace(/ ?\n ?/g, "\n")
-        .trim();
-    if (entry.sticker) take(match(entry.sticker.replace(/^\[|\]$/g, "")));
-    // Any line of the message may be the protagonist's, not only the first.
-    const asPlayer =
-      !!names.player &&
-      text.split(/\r?\n/u).some((line) => {
-        const spoken = speakerPrefix(line.trim());
-        return !!spoken && sameName(spoken.speaker, names.player);
-      });
-    if (asPlayer) {
+    const message = readMessage(entry, names, match, stickers === 0);
+    if (message === AS_PLAYER) {
       return `a message was written as ${names.player}: write only ${names.li}'s own messages, never their reply`;
     }
-    const prefix = speakerPrefix(text);
-    if (prefix && sameName(prefix.speaker, names.li)) text = prefix.rest;
-    if (!text && !sticker) continue;
-    messages.push({ text: [...text].slice(0, MESSAGE_TEXT_MAX).join(""), ...(sticker ? { sticker } : {}) });
+    if (!message) continue;
+    if (message.sticker) stickers += 1;
+    const haptic = remote ? normalizeHapticCues(entry.haptic) : [];
+    messages.push(haptic.length ? { ...message, haptic } : message);
   }
   if (!messages.length) return `the reply had no message from ${names.li}`;
-  return { messages: messages.slice(0, REPLY_MESSAGES_MAX) };
+  return {
+    messages: messages.slice(0, REPLY_MESSAGES_MAX),
+    ...(offered && raw.invite === true ? { invite: true } : {}),
+  };
+}
+
+const AS_PLAYER = "as-player";
+
+/**
+ * One message as `names.li` sent it: a leading "Name:" taken off, its first listed sticker (when `stickerFree`) and its
+ * other sticker-shaped bracketed names taken out, cut to MESSAGE_TEXT_MAX; null when nothing is left, AS_PLAYER when a
+ * line of it is the protagonist's.
+ */
+function readMessage(
+  entry: { text?: string | null; sticker?: string | null },
+  names: ThreadNames,
+  match: (token: string) => string | null,
+  stickerFree: boolean,
+): { text: string; sticker?: string } | typeof AS_PLAYER | null {
+  let text = (entry.text ?? "").trim();
+  let sticker: string | undefined;
+  const take = (id: string | null) => {
+    if (id && stickerFree && !sticker) sticker = id;
+  };
+  const before = text;
+  text = text.replace(BRACKETED, (whole, inner: string) => {
+    const id = match(inner);
+    take(id);
+    return id || STICKER_SHAPED.test(folded(inner)) ? " " : whole;
+  });
+  if (text !== before)
+    text = text
+      .replace(/[ \t]+/g, " ")
+      .replace(/ ?\n ?/g, "\n")
+      .trim();
+  if (entry.sticker) take(match(entry.sticker.replace(/^\[|\]$/g, "")));
+  // Any line of the message may be the protagonist's, not only the first.
+  const asPlayer =
+    !!names.player &&
+    text.split(/\r?\n/u).some((line) => {
+      const spoken = speakerPrefix(line.trim());
+      return !!spoken && sameName(spoken.speaker, names.player);
+    });
+  if (asPlayer) return AS_PLAYER;
+  const prefix = speakerPrefix(text);
+  if (prefix && sameName(prefix.speaker, names.li)) text = prefix.rest;
+  if (!text && !sticker) return null;
+  return { text: [...text].slice(0, MESSAGE_TEXT_MAX).join(""), ...(sticker ? { sticker } : {}) };
+}
+
+// ── P17g's reply: the group chat (#2154; the prompt: S/prompts.ts groupChatMessages) ──
+
+/** The members' messages in one reply to the player, and in one squabble. */
+export const GROUP_REPLY_MAX = 6;
+export const GROUP_SQUABBLE_MAX = 8;
+
+export interface GroupReplyRaw {
+  messages: Array<{ speaker?: string | null; text?: string | null; sticker?: string | null }>;
+}
+
+export const GroupReplySchema: ZodType<GroupReplyRaw> = z.object({
+  messages: z
+    .array(
+      z.object({
+        speaker: z.string().max(200).nullable().optional(),
+        text: z.string().max(4000).nullable().optional(),
+        sticker: z.string().max(40).nullable().optional(),
+      }),
+    )
+    .min(1)
+    .max(16),
+});
+
+/** A member as P17g's parser reads them: their id, name, and the stickers of their own they may send. */
+export interface GroupSpeaker {
+  id: string;
+  name: string;
+  stickers: readonly ReplySticker[];
+}
+
+/**
+ * The members `text` names, by their whole name or its first word (as sameName reads a speaker), standing as a word.
+ * ponytail: a word is told by the letters around it, so a name written straight on to other letters (in a script
+ * without spaces, Han or kana, say) is not found and the prompt's rule alone covers it; the upgrade path is
+ * Intl.Segmenter's words.
+ */
+function namedIn(text: string, members: readonly GroupSpeaker[]): GroupSpeaker[] {
+  const said = fold(text);
+  return members.filter((member) => {
+    // The first word that names them, past titles and articles: "Il Dottore" is named by "Dottore", never by any "il"
+    // (CodeRabbit on #2168).
+    const first = nameCore(member.name)[0];
+    if (!first) return false;
+    const name = first.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+    return new RegExp(`(?<![\\p{L}\\p{N}\\p{M}])${name}(?![\\p{L}\\p{N}\\p{M}])`, "u").test(said);
+  });
+}
+
+/**
+ * The members' messages (see the header): each read as normalizeChatReply reads his, with its speaker's own stickers
+ * and the protagonist's (`yours`), at most GROUP_REPLY_MAX (a squabble GROUP_SQUABBLE_MAX), or the repair turn's reason.
+ * `answering` is the protagonist's newest message a reply answers: each member it names must have a message in it.
+ */
+export function normalizeGroupReply(
+  raw: GroupReplyRaw,
+  { player, members, yours }: { player: string; members: readonly GroupSpeaker[]; yours: readonly ReplySticker[] },
+  { squabble = false, answering = "" }: { squabble?: boolean; answering?: string } = {},
+): { messages: Array<{ li: string; text: string; sticker?: string }> } | string {
+  const messages: Array<{ li: string; text: string; sticker?: string }> = [];
+  const sent = new Set<string>();
+  const everyone = members.map((member) => member.name).join(", ");
+  for (const entry of raw.messages) {
+    const named = (entry.speaker ?? "").trim();
+    if (named && sameName(named, player)) {
+      return `a message was written as ${player}: write only the messages of ${everyone}, never ${player}'s`;
+    }
+    const member = members.find((candidate) => sameName(named, candidate.name));
+    if (!member) {
+      return `${named ? `"${named}" is not` : "a message names no speaker who is"} in the group chat: every speaker is one of ${everyone}, by their exact name`;
+    }
+    const match = stickerMatcher([...member.stickers, ...yours]);
+    const message = readMessage(entry, { li: member.name, player }, match, !sent.has(member.id));
+    if (message === AS_PLAYER) {
+      return `a message was written as ${player}: write only the messages of ${everyone}, never ${player}'s`;
+    }
+    if (!message) continue;
+    if (message.sticker) sent.add(member.id);
+    messages.push({ li: member.id, ...message });
+  }
+  if (!messages.length) return `the reply had no message from ${everyone}`;
+  const kept = messages.slice(0, squabble ? GROUP_SQUABBLE_MAX : GROUP_REPLY_MAX);
+  const speaking = new Set(kept.map((message) => message.li));
+  if (squabble && speaking.size < 2) return "a squabble needs messages from at least two of them";
+  const silent = squabble ? [] : namedIn(answering, members).filter((member) => !speaking.has(member.id));
+  const names = silent.map((member) => member.name).join(", ");
+  if (names) return `${player} named ${names}: each one named answers with at least one message`;
+  return { messages: kept };
 }
 
 // ── P18's reply: his chat memory (the prompt: S/prompts.ts chatMemoryMessages) ──
@@ -173,12 +308,14 @@ export const ChatMemorySchema: ZodType<ChatMemoryRaw> = z.object({
 
 /**
  * The memory (one paragraph, at most MEMORY_CHARS_MAX characters, or the repair turn) and its quote, kept only when the
- * conversation really holds it word for word (a speaker's name before it is taken off).
+ * conversation really holds it word for word (a speaker's name before it is taken off: his, the protagonist's, or in the
+ * group chat any of `others`).
  */
 export function normalizeChatMemory(
   raw: ChatMemoryRaw,
   names: ThreadNames,
   conversation: string,
+  others: readonly string[] = [],
 ): { memory: string; quote: string } | string {
   const memory = raw.memory.replace(/\s+/gu, " ").trim();
   if (!memory) return "the memory was empty";
@@ -190,7 +327,8 @@ export function normalizeChatMemory(
     .replace(/^["“”'‘’«»「」]+|["“”'‘’«»「」]+$/gu, "")
     .trim();
   const prefix = speakerPrefix(quote);
-  if (prefix && (sameName(prefix.speaker, names.li) || sameName(prefix.speaker, names.player))) quote = prefix.rest;
+  const speakers = [names.li, names.player, ...others];
+  if (prefix && speakers.some((name) => sameName(prefix.speaker, name))) quote = prefix.rest;
   if (!quote || chars(quote) > MEMORY_QUOTE_MAX || !squash(conversation).includes(squash(quote))) quote = "";
   return { memory, quote };
 }

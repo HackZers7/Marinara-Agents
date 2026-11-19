@@ -73,7 +73,10 @@ export function noteOpenThread(runId: string, li: LiId | null): void {
   openThreads.set(runId, li);
 }
 
-function shuffled<T>(items: readonly T[], random: () => number): T[] {
+/** The thread the player has open (null: none), as last noted; the group chat's squabbles skip it too. */
+export const openThread = (runId: string): string | null => openThreads.get(runId) ?? null;
+
+export function shuffled<T>(items: readonly T[], random: () => number): T[] {
   const result = [...items];
   for (let index = result.length - 1; index > 0; index -= 1) {
     const other = Math.floor(random() * (index + 1));
@@ -83,7 +86,7 @@ function shuffled<T>(items: readonly T[], random: () => number): T[] {
 }
 
 /** The love interests the player has met, in cast order (see the header). */
-const metLis = (run: RunDocuments) =>
+export const metLis = (run: RunDocuments) =>
   Object.keys(run.state.lis).filter((li) => run.units.some((unit) => unit.id === li && !!unit.bible));
 
 /** The love interests who may write first now, in cast order (see the header). */
@@ -148,7 +151,7 @@ export async function phoneDue(
 ): Promise<PhoneDueResult> {
   if (open !== undefined) noteOpenThread(runId, open);
   const run = await readRun(deps.store, runId);
-  if (!run) throw new OtomeForgeError(404, "No such Otome Forge run.", "not-found");
+  if (!run) throw new OtomeForgeError(404, "No such Otome Hearth story.", "not-found");
   const latest = run.world.phoneDaily?.last ?? null;
   const result = (status: PhoneDueResult["status"]): PhoneDueResult => ({ status, latest });
   const limit = run.world.dailyMessages ?? 0;
@@ -174,7 +177,7 @@ export async function phoneDue(
       decided = dailyDecision(current.phoneDaily, { now, seen, limit: spread(current.dailyMessages ?? 0) });
       return "next" in decided ? { ...current, phoneDaily: decided.next } : current;
     });
-    if (!saved) throw new OtomeForgeError(404, "No such Otome Forge run.", "not-found");
+    if (!saved) throw new OtomeForgeError(404, "No such Otome Hearth story.", "not-found");
     if (decided.status !== "queued") return result(decided.status);
     const order = shuffled(candidates, random);
     background.ensure({

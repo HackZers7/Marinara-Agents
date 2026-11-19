@@ -21,6 +21,8 @@ export const LIMITS = {
   summary: 20_000,
   timelineEvents: 200,
   timelineEventText: 1_000,
+  quickReplies: 24,
+  quickReplyLabel: 40,
   selectedIds: 200,
   chapterWords: { min: 100, max: 20_000 },
   targetWords: { min: 1_000, max: 2_000_000 },
@@ -30,11 +32,20 @@ export const LIMITS = {
   chaptersPerStory: 2_000,
 } as const;
 
-export type StoryTheme = "book" | "ebook";
+/** "document": no pages, one column of chapters that scrolls down. A package before 0.3.0 reads it as "book". */
+export type StoryTheme = "book" | "ebook" | "document";
 export type StoryColorMode = "app" | "light" | "dark";
 export type StorySide = "left" | "right";
 
-/** Reading and layout preferences. One document per Engine install, shared by every story. */
+/** A saved instruction the quick bar sends in place of the continue message. */
+export interface QuickReply {
+  id: string;
+  /** What the button shows; empty = the instruction itself. */
+  label: string;
+  text: string;
+}
+
+/** Reading and layout preferences and the quick replies. One document per Engine install, shared by every story. */
 export interface StoryWriterPreferences {
   theme: StoryTheme;
   colorMode: StoryColorMode;
@@ -46,9 +57,13 @@ export interface StoryWriterPreferences {
   fontSize: number;
   sidebarSide: StorySide;
   noteSide: StorySide;
+  /** Hiding the sticky note only hides it: its text is still sent with every chapter. */
+  showAuthorNote: boolean;
   streaming: boolean;
   pageAnimation: boolean;
   lastStoryId: string | null;
+  showQuickReplies: boolean;
+  quickReplies: QuickReply[];
 }
 
 export interface TimelineEvent {
@@ -144,6 +159,18 @@ export interface StoryWithChapters {
   chapters: StoryChapter[];
 }
 
+/**
+ * One recorded step of a chapter's Rewrite Part span: what the span was before, what it became after (a confirmed
+ * rewrite, hand edits included, or an abandoned draft), and whether it ever reached the chapter.
+ */
+export interface PartHistoryEntry {
+  textBefore: string;
+  textAfter: string;
+  applied: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // ── Server API (prefix /api/story-writer; the host api client takes paths without "/api") ──
 // GET    /story-writer/preferences                         → StoryWriterPreferences
 // PATCH  /story-writer/preferences       Partial<Prefs>    → StoryWriterPreferences
@@ -156,6 +183,9 @@ export interface StoryWithChapters {
 // POST   /story-writer/stories/:id/chapters  ChapterCreate → StoryWithChapters
 // PATCH  /story-writer/stories/:id/chapters/:chapterId  ChapterPatch → { story: StoryRecord; chapter: StoryChapter }
 // DELETE /story-writer/stories/:id/chapters/:chapterId     → StoryWithChapters
+// GET    /story-writer/stories/:id/chapters/:chapterId/part-history → PartHistoryEntry[]
+// POST   /story-writer/stories/:id/chapters/:chapterId/part-history { textBefore, textAfter, applied } → PartHistoryEntry[]
+// DELETE /story-writer/stories/:id/chapters/:chapterId/part-history → PartHistoryEntry[] (cleared by a whole rewrite)
 // Errors: { error: string } with 400 (invalid input), 404 (unknown story/chapter), 409 (chapter id taken).
 
 export interface ChapterCreate {
@@ -184,6 +214,11 @@ export function chapterDocumentId(chapterId: string): string {
   return `${STORY_WRITER_PACKAGE_ID}:chapter:${chapterId}`;
 }
 
+/** One Rewrite Part history document per chapter, so it dies with the chapter it belongs to. */
+export function partHistoryDocumentId(chapterId: string): string {
+  return `${STORY_WRITER_PACKAGE_ID}:part-history:${chapterId}`;
+}
+
 export const PREFERENCES_DOCUMENT_ID = `${STORY_WRITER_PACKAGE_ID}:preferences`;
 
 export function defaultPreferences(): StoryWriterPreferences {
@@ -195,9 +230,12 @@ export function defaultPreferences(): StoryWriterPreferences {
     fontSize: 18,
     sidebarSide: "left",
     noteSide: "right",
+    showAuthorNote: true,
     streaming: true,
     pageAnimation: true,
     lastStoryId: null,
+    showQuickReplies: true,
+    quickReplies: [],
   };
 }
 
@@ -269,35 +307,52 @@ export function normalizePreferences(patch: unknown, base: StoryWriterPreference
   const fontColor = "fontColor" in input ? input.fontColor : base.fontColor;
   const lastStoryId = "lastStoryId" in input ? input.lastStoryId : base.lastStoryId;
   const preferences: StoryWriterPreferences = {
-    theme: oneOf(input.theme, ["book", "ebook"], base.theme),
+    theme: oneOf(input.theme, ["book", "ebook", "document"], base.theme),
     colorMode: oneOf(input.colorMode, ["app", "light", "dark"], base.colorMode),
     fontFamily: text(input.fontFamily, 200, base.fontFamily).trim(),
     fontColor: typeof fontColor === "string" && (fontColor === "" || HEX_COLOR.test(fontColor)) ? fontColor : "",
     fontSize: integer(input.fontSize, LIMITS.fontSize, base.fontSize),
     sidebarSide: oneOf(input.sidebarSide, ["left", "right"], base.sidebarSide),
     noteSide: oneOf(input.noteSide, ["left", "right"], base.noteSide),
+    showAuthorNote: typeof input.showAuthorNote === "boolean" ? input.showAuthorNote : base.showAuthorNote,
     streaming: typeof input.streaming === "boolean" ? input.streaming : base.streaming,
     pageAnimation: typeof input.pageAnimation === "boolean" ? input.pageAnimation : base.pageAnimation,
     lastStoryId: typeof lastStoryId === "string" && lastStoryId.length <= 200 ? lastStoryId : null,
+    showQuickReplies: typeof input.showQuickReplies === "boolean" ? input.showQuickReplies : base.showQuickReplies,
+    quickReplies: normalizeEntries(input.quickReplies, base.quickReplies, "reply", LIMITS.quickReplies, (item) => ({
+      label: text(item.label, LIMITS.quickReplyLabel, "").trim(),
+      text: text(item.text, LIMITS.shortText, "").trim(),
+    })),
   };
   return preferences;
 }
 
-function normalizeTimeline(value: unknown, fallback: TimelineEvent[]): TimelineEvent[] {
+/**
+ * A list of entries with a required text (timeline events, quick replies): entries without text are dropped, each
+ * keeps a valid unique id or gets one, and the list is capped. A non-array keeps the fallback.
+ */
+function normalizeEntries<T extends { text: string }>(
+  value: unknown,
+  fallback: Array<T & { id: string }>,
+  prefix: string,
+  limit: number,
+  read: (item: Record<string, unknown>) => T,
+): Array<T & { id: string }> {
   if (!Array.isArray(value)) return fallback;
-  const events: TimelineEvent[] = [];
+  const entries: Array<T & { id: string }> = [];
   const seen = new Set<string>();
   for (const item of value) {
     if (!isRecord(item)) continue;
-    const eventText = text(item.text, LIMITS.timelineEventText, "").trim();
-    if (!eventText) continue;
+    const entry = read(item);
+    if (!entry.text) continue;
     let id = typeof item.id === "string" && CLIENT_ID_PATTERN.test(item.id) ? item.id : "";
-    if (!id || seen.has(id)) id = `event-${events.length.toString(36)}-${eventText.length.toString(36)}-${seen.size}`;
+    if (!id || seen.has(id))
+      id = `${prefix}-${entries.length.toString(36)}-${entry.text.length.toString(36)}-${seen.size}`;
     seen.add(id);
-    events.push({ id, text: eventText, done: item.done === true });
-    if (events.length >= LIMITS.timelineEvents) break;
+    entries.push({ id, ...entry });
+    if (entries.length >= limit) break;
   }
-  return events;
+  return entries;
 }
 
 /** Merges a partial settings `patch` over `base` and returns complete, valid settings. */
@@ -335,7 +390,10 @@ export function normalizeStorySettings(patch: unknown, base: StorySettings = def
     clearNoteAfterChapter:
       typeof input.clearNoteAfterChapter === "boolean" ? input.clearNoteAfterChapter : base.clearNoteAfterChapter,
     chapterTitles: typeof input.chapterTitles === "boolean" ? input.chapterTitles : base.chapterTitles,
-    timeline: normalizeTimeline(input.timeline, base.timeline),
+    timeline: normalizeEntries(input.timeline, base.timeline, "event", LIMITS.timelineEvents, (item) => ({
+      text: text(item.text, LIMITS.timelineEventText, "").trim(),
+      done: item.done === true,
+    })),
     autoTimeline: typeof input.autoTimeline === "boolean" ? input.autoTimeline : base.autoTimeline,
     keepFullChapters: integer(input.keepFullChapters, LIMITS.keepFullChapters, base.keepFullChapters),
     autoSummarize: typeof input.autoSummarize === "boolean" ? input.autoSummarize : base.autoSummarize,
@@ -346,7 +404,12 @@ export function normalizeStorySettings(patch: unknown, base: StorySettings = def
 export function normalizeChapterPatch(patch: unknown): ChapterPatch {
   const input = isRecord(patch) ? patch : {};
   const result: ChapterPatch = {};
-  if (typeof input.text === "string") result.text = input.text.slice(0, LIMITS.chapterText);
+  if (typeof input.text === "string") {
+    // Marker tokens never eat the chapter budget: the slice grants back the length their lines occupy, stripped
+    // exactly as countWords strips them. Token-free text slices byte for byte as before.
+    const stripped = input.text.replace(PART_TOKEN_LINE, " ");
+    result.text = input.text.slice(0, LIMITS.chapterText + (input.text.length - stripped.length));
+  }
   if (typeof input.summary === "string") result.summary = input.summary.slice(0, LIMITS.summary);
   if (input.status === "draft" || input.status === "complete") result.status = input.status;
   if (typeof input.request === "string") result.request = input.request.slice(0, LIMITS.longText);
@@ -355,11 +418,21 @@ export function normalizeChapterPatch(patch: unknown): ChapterPatch {
 
 // ── Text helpers shared by the client, the server and the prompt ──
 
-/** Counts words the way a reader would: Markdown markers and scene breaks do not count. */
+/**
+ * A Rewrite Part marker token standing on its own line, with the blank-line edges a strip may tidy. Every place that
+ * discounts the tokens — word counts, the chapter text limit — strips them through this one regex, so the accounting
+ * can never disagree. ponytail: the token shape is duplicated from part-markers.ts because model.ts must keep its
+ * zero imports — the server bundle takes it by relative path, and part-markers.ts sits in the client tree. Upgrade:
+ * move the token constants into a tiny shared module both bundles can take.
+ */
+const PART_TOKEN_LINE = /^\s*<!--sw:part-(?:start|end)-->\s*$/gm;
+
+/** Counts words the way a reader would: Markdown markers, scene breaks and Rewrite Part tokens do not count. */
 export function countWords(markdown: string): number {
   const plain = markdown
     .replace(/^\s{0,3}(?:#{1,6}\s+|>\s?)/gm, "")
     .replace(/^\s*(?:\*{3,}|-{3,}|_{3,})\s*$/gm, " ")
+    .replace(PART_TOKEN_LINE, " ")
     .replace(/[*_~=`]+/g, "");
   const matches = plain.match(/[\p{L}\p{N}][\p{L}\p{N}'’-]*/gu);
   const words = matches?.length ?? 0;

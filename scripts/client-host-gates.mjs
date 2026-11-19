@@ -1,4 +1,4 @@
-// Client bundle gates for the Engine's host namespace (Pasta-Devs/Marinara-Agents#1487).
+// Client bundle gates for the Engine's host namespace (HackZers7/Marinara-Agents#1487).
 //
 // Guardrail 2, the client metafile gate: every Engine store, service or component the Engine hands packages through
 // `__MARINARA_HOST__` must reach a client bundle only as its sources/host-client-overlay adapter, byte for byte. A
@@ -28,6 +28,11 @@ export const HOST_CLIENT_PATHS = [
   "lib/api-client.ts",
   "lib/emoji-catalog.generated.ts",
   "components/ui/Modal.tsx",
+  "components/ui/Switch.tsx",
+  "components/ui/Checkbox.tsx",
+  "components/ui/Spinner.tsx",
+  "components/ui/Tabs.tsx",
+  "components/ui/SearchInput.tsx",
 ];
 
 const CLIENT_SOURCE = "packages/client/src/";

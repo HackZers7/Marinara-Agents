@@ -1,5 +1,5 @@
 // esbuild for package clients that use the Engine's host instead of bundling copies of it
-// (Pasta-Devs/Marinara-Agents#1487, Engine "Host client namespace").
+// (HackZers7/Marinara-Agents#1487, Engine "Host client namespace").
 //
 // Since capability API 1.341 the Engine sets `globalThis.__MARINARA_HOST__ = { version: 1, ... }` before it loads any
 // package client. hostModulesPlugin resolves each library the Engine hands packages (React, React Query, zustand,

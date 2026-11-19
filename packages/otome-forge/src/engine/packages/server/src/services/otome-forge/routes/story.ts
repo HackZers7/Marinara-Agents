@@ -13,14 +13,16 @@
 //                                                                 then the next node is queued (M2b: a confrontation
 //                                                                 node carries its stance game; S/routes/arcs.ts
 //                                                                 takes its stances)
-// POST /runs/:run/chapters/:key/beats/:i/choose {choice, option} → {beat: BeatView, remembered, rememberedBy,
+// POST /runs/:run/chapters/:key/beats/:i/choose {choice, option, own?} → {beat: BeatView, remembered, rememberedBy,
 //                                                                 affection} (#2046: how far the pick moved each love
-//                                                                 interest's affection points)
+//                                                                 interest's affection points); option "own" with
+//                                                                 own {kind, text} answers a chapter's closing
+//                                                                 decision in the player's own words (#2146)
 // POST /runs/:run/chapters/:key/beats/:i/read {segment}        → ReadResult {grants, starlight, chapterDone}
 // POST /runs/:run/chapters/:key/beats/:i/ease-off {segment}    → {beat: BeatView, veilSuggestions} & ReadResult
 // POST /runs/:run/veil {limits}                                → {world: WorldView}; only ever lowers allow → veil
 // POST /runs/:run/cancel                                       → {ok}
-// POST /runs/:run/favorites {text, ref, li?, keep?}            → {favorites}; keeps the line (keep: false lets it go),
+// POST /runs/:run/favorites {text, ref, li?, voiced?, keep?}   → {favorites}; keeps the line (keep: false lets it go),
 //                                                                 so sending it twice changes nothing
 // GET  /runs/:run/who-said-what                                → WhoSaidWhatView (#2041, S/minigames/who-said-what.ts):
 //                                                                 no model call, no write
@@ -30,6 +32,7 @@
 // endings not reached) never leave the server.
 import { z } from "zod";
 import type { Beat, BeatView, Favorite } from "../../../../../client/src/features/otome-forge/shared/api-types.js";
+import { OWN_ANSWER_MAX, OWN_OPTION } from "../../../../../client/src/features/otome-forge/shared/arcs.js";
 import { LIMIT_IDS } from "../../../../../client/src/features/otome-forge/shared/content.js";
 import {
   OtomeForgeError,
@@ -84,13 +87,20 @@ const ArcBody = z.object({
     .optional(),
 });
 const BeatBody = z.object({ rewrite: z.boolean().optional() });
-const ChooseBody = z.object({ choice: z.string().min(1).max(40), option: z.string().min(1).max(40) });
+const ChooseBody = z.object({
+  choice: z.string().min(1).max(40),
+  option: z.string().min(1).max(40),
+  /** #2146: what the player says or does in their own words, with option OWN_OPTION alone. */
+  own: z.object({ kind: z.enum(["dialogue", "action"]), text: z.string().max(OWN_ANSWER_MAX) }).optional(),
+});
 const SegmentBody = z.object({ segment: z.number().int().min(0).max(10_000) });
 const VeilBody = z.object({ limits: z.array(z.enum(LIMIT_IDS)).max(LIMIT_IDS.length) });
 const FavoriteBody = z.object({
   text: z.string().min(1).max(2000),
   ref: z.string().min(1).max(200),
   li: z.string().max(80).optional(),
+  /** 0.34.0: the line with its Emotion cues (Segment.voiced), so the favourite replays the clip the reader voiced. */
+  voiced: z.string().min(1).max(4000).optional(),
   /** False lets the line go; absent or true keeps it. */
   keep: z.boolean().optional(),
 });
@@ -110,7 +120,7 @@ export function beatParams(request: OtomeRequest): { key: string; i: number } {
   return { key, i: index };
 }
 
-const runNotFound = () => new OtomeForgeError(404, "No such Otome Forge run.", "not-found");
+const runNotFound = () => new OtomeForgeError(404, "No such Otome Hearth story.", "not-found");
 
 /** The beat as the client sees it, its CG's paint left pending by a restart reading as `stopped` (S/art/cg.ts). */
 function beatView(runId: string, beat: Beat): BeatView {
@@ -215,10 +225,25 @@ export const registerStoryRoutes: RegisterRoutes = (router, deps) => {
   router.post(
     "/runs/:run/chapters/:key/beats/:i/choose",
     handle(async (request) => {
-      const { choice, option } = parseBody(ChooseBody, request.body);
+      const { choice, option, own } = parseBody(ChooseBody, request.body);
+      if ((option === OWN_OPTION) !== !!own) {
+        throw new OtomeForgeError(
+          400,
+          `Only the option "${OWN_OPTION}" takes your own words, and it needs them.`,
+          "bad-request",
+        );
+      }
       const { runId } = runParam(request);
       const { key, i } = beatParams(request);
-      const { beat, remembered, rememberedBy, affection } = await chooseOption(deps, runId, key, i, choice, option);
+      const { beat, remembered, rememberedBy, affection } = await chooseOption(
+        deps,
+        runId,
+        key,
+        i,
+        choice,
+        option,
+        own,
+      );
       return { beat: beatView(runId, beat), remembered, rememberedBy, affection };
     }),
   );
@@ -229,7 +254,10 @@ export const registerStoryRoutes: RegisterRoutes = (router, deps) => {
       const { segment } = parseBody(SegmentBody, request.body);
       const { runId } = runParam(request);
       const { key, i } = beatParams(request);
-      return readTo(deps, runId, key, i, segment, { debugMode: debugModeOf(request) });
+      return readTo(deps, runId, key, i, segment, {
+        debugMode: debugModeOf(request),
+        review: reviewModeOf(request),
+      });
     }),
   );
 
@@ -239,7 +267,10 @@ export const registerStoryRoutes: RegisterRoutes = (router, deps) => {
       const { segment } = parseBody(SegmentBody, request.body);
       const { runId } = runParam(request);
       const { key, i } = beatParams(request);
-      const { beat, ...rest } = await easeOff(deps, runId, key, i, segment, { debugMode: debugModeOf(request) });
+      const { beat, ...rest } = await easeOff(deps, runId, key, i, segment, {
+        debugMode: debugModeOf(request),
+        review: reviewModeOf(request),
+      });
       return { beat: beatView(runId, beat), ...rest };
     }),
   );
@@ -273,14 +304,14 @@ export const registerStoryRoutes: RegisterRoutes = (router, deps) => {
   router.post(
     "/runs/:run/favorites",
     handle(async (request) => {
-      const { text, ref, li, keep = true } = parseBody(FavoriteBody, request.body);
+      const { text, ref, li, voiced, keep = true } = parseBody(FavoriteBody, request.body);
       const { runId } = runParam(request);
       const at = new Date().toISOString();
       const state = await store.updateDoc(runDocTarget("state", stateId(runId)), normalizeState, (current) => {
         if (li && !current.lis[li]) throw new OtomeForgeError(404, "No such love interest.", "not-found");
         const starred = current.favorites.some((favorite) => favorite.ref === ref);
         if (starred === keep) return current;
-        const favorite: Favorite = { at, text, ref, ...(li ? { li } : {}) };
+        const favorite: Favorite = { at, text, ref, ...(li ? { li } : {}), ...(voiced ? { voiced } : {}) };
         return {
           ...current,
           favorites: keep

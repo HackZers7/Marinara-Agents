@@ -2,12 +2,19 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
 import {
+  CLIENT_ID_PATTERN,
   DEFAULT_SYSTEM_PROMPT,
+  LIMITS,
+  PREFERENCES_DOCUMENT_ID,
   chapterDocumentId,
   countWords,
   defaultPreferences,
   storyDocumentId,
 } from "../packages/story-writer/src/engine/packages/client/src/lib/story-writer/model.ts";
+import {
+  PART_END_TOKEN,
+  PART_START_TOKEN,
+} from "../packages/story-writer/src/engine/packages/client/src/lib/story-writer/part-markers.ts";
 import { storyWriterRoutes } from "../packages/story-writer/src/engine/packages/server/src/services/story-writer/routes.ts";
 import {
   createStoryStore,
@@ -118,6 +125,87 @@ test("preferences start at the defaults and every patch is normalized over the s
   await assert.rejects(store.patchPreferences("dark"), { statusCode: 400 });
 });
 
+test("the Document theme is saved like Book and E-book, and an unknown theme keeps the saved one", async () => {
+  const { store } = setup();
+  assert.equal((await store.patchPreferences({ theme: "document" })).theme, "document");
+  const kept = await store.patchPreferences({ theme: "scroll", fontSize: 20 });
+  assert.equal(kept.theme, "document");
+  assert.equal(kept.fontSize, 20);
+  assert.deepEqual(await store.getPreferences(), kept);
+  assert.equal((await store.patchPreferences({ theme: "book" })).theme, "book");
+});
+
+test("quick replies are kept for every story, normalized, and old preference documents get the defaults", async () => {
+  const { store, row, setData } = setup();
+  const fresh = await store.getPreferences();
+  assert.equal(fresh.showQuickReplies, true);
+  assert.deepEqual(fresh.quickReplies, []);
+
+  // A document saved by 0.1.1 has neither key.
+  await store.patchPreferences({ theme: "ebook" });
+  const {
+    showQuickReplies: _show,
+    quickReplies: _replies,
+    ...legacy
+  } = row(PREFERENCES_DOCUMENT_ID)!.data as Record<string, unknown>;
+  setData(PREFERENCES_DOCUMENT_ID, legacy);
+  const upgraded = await store.getPreferences();
+  assert.equal(upgraded.theme, "ebook");
+  assert.equal(upgraded.showQuickReplies, true);
+  assert.deepEqual(upgraded.quickReplies, []);
+
+  const saved = await store.patchPreferences({
+    showQuickReplies: "yes",
+    quickReplies: [
+      { id: "reply-blank-0001", label: "Blank", text: "   " },
+      { id: "reply-pour-00001", label: "L".repeat(60), text: "  Make it pour.  " },
+      { id: "Not An Id", label: "", text: "x".repeat(2_500) },
+      { id: "reply-pour-00001", label: "Twin", text: "Same id." },
+      "not a reply",
+      ...Array.from({ length: 30 }, (_, index) => ({
+        id: `reply-many-${index}-0000`,
+        label: "",
+        text: `Reply ${index}`,
+      })),
+    ],
+  });
+  assert.equal(saved.showQuickReplies, true, "a non-boolean keeps the saved value");
+  assert.equal(saved.quickReplies.length, 24);
+  assert.deepEqual(saved.quickReplies[0], { id: "reply-pour-00001", label: "L".repeat(40), text: "Make it pour." });
+  assert.equal(saved.quickReplies[1]!.text.length, 2_000);
+  assert.equal(saved.quickReplies[2]!.text, "Same id.");
+  assert.equal(new Set(saved.quickReplies.map((reply) => reply.id)).size, 24, "ids are unique");
+  for (const reply of saved.quickReplies) assert.match(reply.id, CLIENT_ID_PATTERN);
+  assert.ok(!saved.quickReplies.some((reply) => reply.label === "Blank"), "a reply without text is dropped");
+
+  const later = await store.patchPreferences({ showQuickReplies: false, fontSize: 20 });
+  assert.equal(later.showQuickReplies, false);
+  assert.deepEqual(later.quickReplies, saved.quickReplies, "a patch without the list keeps it");
+  assert.deepEqual(await store.getPreferences(), later);
+});
+
+test("the author's note is shown by default, old preference documents show it, and a non-boolean keeps the saved value", async () => {
+  const { store, row, setData } = setup();
+  assert.equal((await store.getPreferences()).showAuthorNote, true);
+
+  // A document saved by 0.2.0 has no showAuthorNote.
+  await store.patchPreferences({ noteSide: "left" });
+  const { showAuthorNote: _shown, ...legacy } = row(PREFERENCES_DOCUMENT_ID)!.data as Record<string, unknown>;
+  setData(PREFERENCES_DOCUMENT_ID, legacy);
+  const upgraded = await store.getPreferences();
+  assert.equal(upgraded.noteSide, "left");
+  assert.equal(upgraded.showAuthorNote, true);
+
+  const hidden = await store.patchPreferences({ showAuthorNote: false });
+  assert.equal(hidden.showAuthorNote, false);
+  assert.equal(hidden.noteSide, "left");
+  const kept = await store.patchPreferences({ showAuthorNote: "yes", fontSize: 20 });
+  assert.equal(kept.showAuthorNote, false, "a non-boolean keeps the saved value");
+  assert.equal(kept.fontSize, 20);
+  assert.deepEqual(await store.getPreferences(), kept);
+  assert.equal((await store.patchPreferences({ showAuthorNote: true })).showAuthorNote, true);
+});
+
 test("stories are created normalized, listed newest first and patched without losing settings", async () => {
   const { store } = setup();
   const first = await store.createStory({ title: "First", chapterWords: 5, unknown: true });
@@ -197,6 +285,25 @@ test("chapters keep the client id, refuse a taken id and keep the story's word c
   assert.equal(afterDelete.story.wordCount, 2);
   assert.equal(afterDelete.story.chapterCount, 1);
   assert.equal(row(chapterDocumentId(clientId)), undefined);
+});
+
+test("the chapter text slice grants the marker tokens' length back, so they never eat the budget", async () => {
+  const { store } = setup();
+  const { story } = await store.createStory();
+  const chapterId = "chapter-limit-0001";
+  await store.createChapter(story.id, { id: chapterId, text: "Seed." });
+
+  // A chapter whose real text fills the limit exactly: the two token lines ride along instead of pushing real
+  // characters out of the slice.
+  const real = `Real ${"x".repeat(LIMITS.chapterText - 5)}`;
+  const marked = [PART_START_TOKEN, real, PART_END_TOKEN].join("\n\n");
+  const saved = await store.patchChapter(story.id, chapterId, { text: marked });
+  assert.ok(saved.chapter.text.startsWith(`${PART_START_TOKEN}\n\n`), "the start token survives");
+  assert.ok(saved.chapter.text.includes(real), "every real character survives the slice");
+
+  // Token-free text slices byte for byte as before: exactly the chapter limit, nothing else changes.
+  const plain = "y".repeat(LIMITS.chapterText);
+  assert.equal((await store.patchChapter(story.id, chapterId, { text: `${plain}tail` })).chapter.text, plain);
 });
 
 test("parallel chapter writes to one story are all kept", async () => {
@@ -352,3 +459,178 @@ test("a chapter left unlisted by a failed story update is adopted by the retry, 
   await assert.rejects(store.createChapter(other.story.id, { id: chapterId, text: "Theft" }), { statusCode: 409 });
   assert.equal((await store.getStory(story.id)).chapters[0]?.text, "Second try, longer");
 });
+
+test("part history: confirm appends an applied entry with the span's before and after", async () => {
+  const { store } = setup();
+  const { story } = await store.createStory({ title: "History" });
+  const chapterId = "chapter-part-0001";
+  await store.createChapter(story.id, { id: chapterId, text: "Around the span." });
+  assert.deepEqual(await store.listPartHistory(story.id, chapterId), []);
+
+  const applied = await store.appendPartHistoryEntry(story.id, chapterId, {
+    textBefore: "The flat scene.",
+    textAfter: "The tense scene, hand-edited.",
+    applied: true,
+  });
+  assert.equal(applied.length, 1);
+  assert.equal(applied[0].textBefore, "The flat scene.");
+  assert.equal(applied[0].textAfter, "The tense scene, hand-edited.");
+  assert.equal(applied[0].applied, true);
+  assert.equal(applied[0].updatedAt, applied[0].createdAt, "the server stamps the entry's time");
+  assert.ok(applied[0].createdAt);
+
+  // A second confirm keeps every earlier entry: history only grows.
+  const again = await store.appendPartHistoryEntry(story.id, chapterId, {
+    textBefore: "The tense scene, hand-edited.",
+    textAfter: "The final scene.",
+    applied: true,
+  });
+  assert.equal(again.length, 2);
+  assert.deepEqual(await store.listPartHistory(story.id, chapterId), again);
+
+  await assert.rejects(store.appendPartHistoryEntry(story.id, chapterId, "not an entry"), { statusCode: 400 });
+  await assert.rejects(store.appendPartHistoryEntry(story.id, "Not An Id", { textBefore: "a" }), { statusCode: 400 });
+  await assert.rejects(store.listPartHistory(story.id, randomUUID()), { statusCode: 404 });
+  await assert.rejects(store.listPartHistory(randomUUID(), chapterId), { statusCode: 404 });
+});
+
+test("part history: an unapplied cancel-with-edits entry changes nothing and stays in the list", async () => {
+  const { store, row } = setup();
+  const { story } = await store.createStory();
+  const chapterId = "chapter-unapplied-1";
+  await store.createChapter(story.id, { id: chapterId, text: "Original span." });
+
+  const saved = await store.appendPartHistoryEntry(story.id, chapterId, {
+    textBefore: "Original span.",
+    textAfter: "A polished draft.",
+    applied: false,
+  });
+  assert.equal(saved.length, 1);
+  assert.equal(saved[0].applied, false);
+  // The chapter text and its document are untouched by the append.
+  assert.equal(row(chapterDocumentId(chapterId))!.revision, 1);
+
+  const mixed = await store.appendPartHistoryEntry(story.id, chapterId, {
+    textBefore: "Original span.",
+    textAfter: "An applied follow-up.",
+    applied: true,
+  });
+  assert.deepEqual(
+    mixed.map((entry) => [entry.applied, entry.textAfter]),
+    [
+      [false, "A polished draft."],
+      [true, "An applied follow-up."],
+    ],
+  );
+});
+
+test("part history: restoring appends a new entry and never truncates", async () => {
+  const { store } = setup();
+  const { story } = await store.createStory();
+  const chapterId = "chapter-restore-01";
+  await store.createChapter(story.id, { id: chapterId, text: "V1." });
+  await store.appendPartHistoryEntry(story.id, chapterId, { textBefore: "V0.", textAfter: "V1.", applied: true });
+  await store.appendPartHistoryEntry(story.id, chapterId, { textBefore: "V1.", textAfter: "V2.", applied: true });
+
+  // A restore goes through the same append: the restored text becomes a new applied entry.
+  const restored = await store.appendPartHistoryEntry(story.id, chapterId, {
+    textBefore: "V2.",
+    textAfter: "V1.",
+    applied: true,
+  });
+  assert.equal(restored.length, 3, "nothing before it was removed");
+  assert.deepEqual(
+    restored.map((entry) => entry.textAfter),
+    ["V1.", "V2.", "V1."],
+  );
+});
+
+test("part history: deleting the chapter removes its history; a story delete removes every chapter's", async () => {
+  const { store } = setup({ transactions: true });
+  const { story } = await store.createStory({ title: "Cleanup" });
+  const chapterId = "chapter-clean-0001";
+  const otherId = "chapter-clean-0002";
+  await store.createChapter(story.id, { id: chapterId, text: "One." });
+  await store.createChapter(story.id, { id: otherId, text: "Two." });
+  await store.appendPartHistoryEntry(story.id, chapterId, { textBefore: "a", textAfter: "b", applied: true });
+  await store.appendPartHistoryEntry(story.id, otherId, { textBefore: "c", textAfter: "d", applied: false });
+
+  await store.deleteChapter(story.id, chapterId);
+  await assert.rejects(store.listPartHistory(story.id, chapterId), { statusCode: 404 });
+  assert.equal((await store.listPartHistory(story.id, otherId)).length, 1, "another chapter keeps its own");
+
+  // A failed delete (unknown chapter) leaves the history alone.
+  await assert.rejects(store.deleteChapter(story.id, randomUUID()), { statusCode: 404 });
+
+  await store.deleteStory(story.id);
+  await assert.rejects(store.listPartHistory(story.id, otherId), { statusCode: 404 });
+});
+
+test("part history: clearPartHistory empties the list for a fresh whole-chapter rewrite, keep-the-rest intact", async () => {
+  const { store } = setup();
+  const { story } = await store.createStory();
+  const chapterId = "chapter-clear-0001";
+  await store.createChapter(story.id, { id: chapterId, text: "Text." });
+  await store.appendPartHistoryEntry(story.id, chapterId, { textBefore: "a", textAfter: "b", applied: true });
+
+  assert.deepEqual(await store.clearPartHistory(story.id, chapterId), []);
+  assert.deepEqual(await store.listPartHistory(story.id, chapterId), []);
+  await assert.rejects(store.clearPartHistory(story.id, randomUUID()), { statusCode: 404 });
+
+  // Clearing again (a chapter that never had history) stays a no-op.
+  assert.deepEqual(await store.clearPartHistory(story.id, chapterId), []);
+});
+
+test("part history: a whole-chapter rewrite clears the rewritten chapter's history, not the pair chapter's", async () => {
+  const { store } = setup();
+  const { story } = await store.createStory();
+  // The marker pair sits in the earlier chapter; the destructive rewrite replaces the LAST one.
+  const pairId = "chapter-pair-00001";
+  const lastId = "chapter-last-00001";
+  await store.createChapter(story.id, { id: pairId, text: "The earlier chapter, holding the markers." });
+  await store.createChapter(story.id, { id: lastId, text: "The chapter being rewritten." });
+  await store.appendPartHistoryEntry(story.id, pairId, { textBefore: "a", textAfter: "b", applied: true });
+  await store.appendPartHistoryEntry(story.id, lastId, { textBefore: "c", textAfter: "d", applied: true });
+
+  // The rewrite starts the rewritten chapter's history over; the pair chapter's versions stay untouched.
+  await store.clearPartHistory(story.id, lastId);
+  assert.deepEqual(await store.listPartHistory(story.id, lastId), []);
+  assert.deepEqual(
+    (await store.listPartHistory(story.id, pairId)).map((entry) => entry.textAfter),
+    ["b"],
+  );
+});
+
+test("part history: appends to one chapter survive a revision conflict and restart as one document", async () => {
+  const memory = memoryPersistence({ transactions: true });
+  let tick = 0;
+  const now = () => new Date(Date.UTC(2026, 0, 1, 0, 0, tick++)).toISOString();
+  const store = createStoryStore(memory.persistence, { now });
+  const { story } = await store.createStory();
+  const chapterId = "chapter-raced-0001";
+  await store.createChapter(story.id, { id: chapterId, text: "Span." });
+
+  const historyId = partHistoryDocumentIdFor(chapterId);
+  await store.appendPartHistoryEntry(story.id, chapterId, { textBefore: "seed", textAfter: "seed", applied: true });
+  memory.interfere(historyId, (data) => ({
+    ...data,
+    entries: [
+      ...data.entries,
+      { textBefore: "x", textAfter: "y", applied: true, createdAt: "2026-01-01T00:00:00.000Z" },
+    ],
+  }));
+  const saved = await store.appendPartHistoryEntry(story.id, chapterId, {
+    textBefore: "a",
+    textAfter: "b",
+    applied: true,
+  });
+  assert.equal(saved.length, 3, "another writer's entry is kept and ours lands after it");
+
+  // The history is one server document, so a restart (a fresh store over the same documents) reads it back.
+  const reopened = createStoryStore(memory.persistence, { now });
+  assert.equal((await reopened.listPartHistory(story.id, chapterId)).length, 3);
+});
+
+function partHistoryDocumentIdFor(chapterId: string): string {
+  return `story-writer:part-history:${chapterId}`;
+}

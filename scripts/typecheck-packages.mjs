@@ -21,7 +21,7 @@
  *
  * TS2339 on the host adapter types (UIState, ChatState, ... in sources/host-client-overlay) is reported too: a member the
  * adapters do not declare may not exist on the Engine's live store, service or API client a package now uses
- * (Pasta-Devs/Marinara-Agents#1487). Add it to the adapter only once the Engine has it.
+ * (HackZers7/Marinara-Agents#1487). Add it to the adapter only once the Engine has it.
  *
  * `games` checks the six turn games' Board and Setup files, which build from sources/engine with no package sources.
  *

@@ -28,6 +28,7 @@ import {
   worldId,
 } from "../../packages/otome-forge/src/engine/packages/server/src/services/otome-forge/ids.ts";
 import {
+  OVERVIEW_STYLE,
   serializeTimeline,
   type TimelineEntry,
 } from "../../packages/otome-forge/src/engine/packages/server/src/services/otome-forge/memory/timeline.ts";
@@ -96,7 +97,9 @@ export async function storyWorld({
   content = defaultContent(),
   cancellation = false,
   personas = [],
+  characters = [],
   arcReply,
+  quizReply,
   model = {},
 }: {
   runKey: string;
@@ -105,10 +108,14 @@ export async function storyWorld({
   content?: ReturnType<typeof defaultContent>;
   cancellation?: boolean;
   personas?: Array<{ id: string; data: unknown }>;
+  /** The player's Engine character cards (0.20.0: side characters are matched to them). */
+  characters?: FakeRuntimeOptions["characters"];
   /** #1983 M4: the arc plan the fake writes, when a test needs one that differs from the default. */
   arcReply?: (prompt: string) => string;
-  /** The fake connection's context window, output cap and background admission (#2039). */
-  model?: Pick<FakeRuntimeOptions, "maxContext" | "maxOutputTokens" | "admissionRun">;
+  /** #2174: the personality quiz lines the fake writes, when a test needs other ones than fakeQuizReply's. */
+  quizReply?: FakeRuntimeOptions["quizReply"];
+  /** The fake connection's context window, output cap and background admission (#2039), and the embedders (0.19.0). */
+  model?: Pick<FakeRuntimeOptions, "maxContext" | "maxOutputTokens" | "admissionRun" | "embeddings" | "embeddingsFor">;
 }) {
   const fake = createFakeDocuments();
   const store = createOtomeStore(fake.documents);
@@ -116,7 +123,9 @@ export async function storyWorld({
     documents: fake.documents,
     replies,
     personas,
+    characters,
     ...(arcReply ? { arcReply } : {}),
+    ...(quizReply ? { quizReply } : {}),
     ...model,
   });
   const runId = runIdOf(runKey);
@@ -273,12 +282,16 @@ export const MIREILLE_ONLY = [
   "MIR-REPAIR-OFFSCREEN",
 ];
 export const RUPTURE_ID = "g-3";
-export function withMireillesPrivateRows(state: RunState, { rupture = false } = {}): RunState {
+/** `holder` "protagonist": the rupture is one she holds (from before #2156), so his dates stay open. */
+export function withMireillesPrivateRows(
+  state: RunState,
+  { rupture = false, holder = "li" as "li" | "protagonist" } = {},
+): RunState {
   const kai = state.lis[KAI]!;
   const grievance = (id: string, text: string, opened: string, severity: "minor" | "rupture" = "minor") => ({
     id,
     li: KAI,
-    by: "li" as const,
+    by: severity === "rupture" ? holder : ("li" as const),
     text,
     severity,
     opened,
@@ -453,7 +466,7 @@ export async function saveStoryMemory(
         content: serializeTimeline({ head, entries }),
         sources: [...entries.map((entry) => entry.key), ...covered].map(stamp),
       },
-      overviewStyle: 4,
+      overviewStyle: OVERVIEW_STYLE,
       status: { phase: "ready", retryable: false },
     }),
   );

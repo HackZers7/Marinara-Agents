@@ -4,7 +4,7 @@
 // ──────────────────────────────────────────────
 // hooks/use-otome-audio.ts plays them through the Engine's player and voice service; this file has no host access, so
 // the regressions run it as it is.
-import { forgeStoryPersona, type ForgeVoiceSpeaker } from "@forge-kit/voice-picking.mjs";
+import { forgeSpeakerVoice, forgeStoryPersona, type ForgeVoiceSpeaker } from "@forge-kit/voice-picking.mjs";
 import type {
   AudioSettings,
   Player,
@@ -85,6 +85,72 @@ export function lineSpeaker(
   return { name: voice.name, ...(segment.gender ? { gender: segment.gender } : {}), cast: false };
 }
 
+// The Engine's speaker-name normalizers (packages/client/src/lib/tts-dialogue.ts normalizeTTSCharacterName and
+// normalizeTTSCharacterBaseName), which the host contract does not expose to packages.
+const ttsName = (value: unknown) =>
+  String(value ?? "")
+    .toLowerCase()
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+function ttsBaseName(value: unknown): string {
+  let name = ttsName(value);
+  let previous = "";
+  while (name && name !== previous) {
+    previous = name;
+    name = name
+      .replace(/^[`*"'“”‘’]+|[`*"'“”‘’:]+$/g, "")
+      .replace(/\s*(?:\([^()]*\)|\[[^\]]*\]|\{[^{}]*})\s*$/g, "")
+      .trim();
+  }
+  return name.match(/^(.+?)\s+(?:[-–—:|])\s+[^-–—:|]+$/)?.[1]?.trim() || name;
+}
+
+/**
+ * The voice an Engine voice row gives a speaker by name, as the Engine's resolveTTSVoiceForSpeaker does for one with no
+ * card of its own: the row with the same name, else the rows with the same base name ("Pulcinella (Fatui)") when they
+ * all name one voice. Rows are read from the same place the kit reads them (the connection's profile, or the config).
+ * ponytail: no short-form match ("Junpei" for a card called "Junpei Iori", Engine #8638); move this into the kit's
+ * forgeSpeakerVoice (and rebuild Gacha Forge) or use the Engine's resolver once the host contract exposes it.
+ */
+export function namedVoice(config: unknown, name: string): string | null {
+  const settings = config as {
+    enabled?: boolean;
+    connectionId?: string;
+    voiceAssignments?: unknown;
+    connectionProfiles?: Record<string, { voiceAssignments?: unknown } | undefined>;
+  } | null;
+  if (!settings || (!settings.connectionId && settings.enabled === false)) return null;
+  const assignments = settings.connectionId
+    ? settings.connectionProfiles?.[settings.connectionId]?.voiceAssignments
+    : settings.voiceAssignments;
+  const rows = (Array.isArray(assignments) ? assignments : []).flatMap((row) =>
+    row && typeof row.voice === "string" && row.voice.trim() && typeof row.characterName === "string"
+      ? [{ name: row.characterName, voice: row.voice.trim() }]
+      : [],
+  );
+  const exact = ttsName(name);
+  const same = exact ? rows.find((row) => ttsName(row.name) === exact) : undefined;
+  if (same) return same.voice;
+  const base = ttsBaseName(name);
+  const voices = new Set(base ? rows.filter((row) => ttsBaseName(row.name) === base).map((row) => row.voice) : []);
+  return voices.size === 1 ? [...voices][0]! : null;
+}
+
+/**
+ * The voice that reads a speaker's line: the kit's pick (a card's own row, the protagonist's persona, the NPC pool),
+ * except that someone outside the cast with no card first takes the voice the Engine assigned to their name.
+ */
+export async function lineVoice(
+  config: unknown,
+  speaker: LineSpeaker,
+  others: boolean,
+  listVoices: (config: unknown) => Promise<string[]>,
+): Promise<string | null> {
+  const named = !speaker.cast && !speaker.characterId ? namedVoice(config, speaker.name) : null;
+  return named ?? forgeSpeakerVoice(config, speaker, others, listVoices);
+}
+
 /** True when the settings would voice this speaker at all (the Engine may still have no voice for them). */
 export function wouldVoice(settings: AudioSettings, speaker: LineSpeaker | null): speaker is LineSpeaker {
   if (!speaker || !settings.tts || settings.muted || settings.dialogueVolume <= 0) return false;
@@ -96,6 +162,98 @@ export function wouldVoice(settings: AudioSettings, speaker: LineSpeaker | null)
  * rewritten beat never replays the old clip. The Engine adds the connection, voice and speaker to it.
  */
 export const voiceCacheKey = (runKey: string, ref: string) => `otome-forge:${runKey}:${ref}`;
+
+/** A line as the Engine voices it: playing it and making it ahead send the same, so the clip made ahead is the one played. */
+export interface LineVoiceRequest {
+  text: string;
+  speaker: string;
+  voice: string;
+  characterId?: string;
+  cacheKey?: string;
+}
+
+/**
+ * What a line is voiced with. 0.34.0: with Emotion cues on, the line as written, cues and all, kept apart from the
+ * plain clip. `cache` false voices it with no cache key.
+ */
+export function lineVoiceRequest(
+  runKey: string,
+  ref: string,
+  segment: Segment,
+  speaker: LineSpeaker,
+  voice: string,
+  settings: Pick<AudioSettings, "emotionCues">,
+  cache = true,
+): LineVoiceRequest {
+  const voiced = settings.emotionCues ? segment.voiced : undefined;
+  return {
+    text: voiced ?? segment.text,
+    speaker: segment.speaker,
+    voice,
+    ...(speaker.characterId ? { characterId: speaker.characterId } : {}),
+    ...(cache ? { cacheKey: voiceCacheKey(runKey, voiced ? `${ref}~cues` : ref) } : {}),
+  };
+}
+
+/** A line whose voice may be made ahead, with its ref (lib/reader-state.ts lineRef). */
+export interface PrepLine {
+  segment: Segment;
+  ref: string;
+}
+
+/**
+ * Makes lines' voices ahead, one at a time and in order, so each plays as its text appears. The newest list replaces
+ * the lines still waiting, and a line is asked for once. A failure stops it until `reset` (the voice settings
+ * changed), so the lines are then voiced as they appear, as before; a stopped wait (AbortError) is no failure, and
+ * neither is one from a line asked for before the last reset.
+ */
+export class VoicePrep {
+  private waiting: PrepLine[] = [];
+  private readonly asked = new Set<string>();
+  private running = false;
+  private failed = false;
+  /** Counts resets, so a line asked for before one cannot stop the lines after it. */
+  private settings = 0;
+
+  constructor(
+    private readonly make: (line: PrepLine) => Promise<void>,
+    private readonly key: (line: PrepLine) => string,
+  ) {}
+
+  set(lines: readonly PrepLine[]) {
+    this.waiting = this.failed ? [] : lines.filter((line) => !this.asked.has(this.key(line)));
+    if (!this.running) void this.run();
+  }
+
+  reset() {
+    this.waiting = [];
+    this.asked.clear();
+    this.failed = false;
+    this.settings += 1;
+  }
+
+  private async run() {
+    this.running = true;
+    try {
+      for (let line = this.waiting.shift(); line; line = this.waiting.shift()) {
+        const key = this.key(line);
+        if (this.asked.has(key)) continue;
+        this.asked.add(key);
+        const settings = this.settings;
+        try {
+          await this.make(line);
+        } catch (error) {
+          if ((error as { name?: string })?.name === "AbortError" || settings !== this.settings) continue;
+          console.warn("Otome Hearth could not voice a line ahead", error);
+          this.failed = true;
+          this.waiting = [];
+        }
+      }
+    } finally {
+      this.running = false;
+    }
+  }
+}
 
 /**
  * The ref a Home tap line is voiced under (M3): his id and a hash of the line, since the Engine keys a clip by its ref,

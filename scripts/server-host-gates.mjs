@@ -1,4 +1,4 @@
-// Server bundle gates (Pasta-Devs/Marinara-Agents#1487). They read the esbuild metafile every package server build
+// Server bundle gates (HackZers7/Marinara-Agents#1487). They read the esbuild metafile every package server build
 // already writes, so a copy of a stateful Engine service cannot come back unnoticed:
 //
 // - Tier A (fail): a vendored copy of a stateful Engine service or of a library that holds Engine state. Calls,

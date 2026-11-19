@@ -27,6 +27,7 @@ import type {
   Unit,
   World,
 } from "../../../../../client/src/features/otome-forge/shared/api-types.js";
+import { birthdayIn } from "../../../../../client/src/features/otome-forge/shared/birthdays.js";
 import { isFace } from "../../../../../client/src/features/otome-forge/shared/faces.js";
 import {
   MOOD_REASON_WORDS_MAX,
@@ -111,7 +112,10 @@ export function noteDay(
   const wall = forgeWallDate(now);
   const today = forgeDayKey(now);
   const special: string[] = [];
-  if (unit.bible?.birthday === today.slice(5)) special.push(`Today is ${unit.name}'s birthday.`);
+  // #2153: on the day Remind Me shows and celebrates (02-29 on 02-28 in a common year).
+  if (unit.bible && birthdayIn(unit.bible.birthday, Number(today.slice(0, 4))) === today) {
+    special.push(`Today is ${unit.name}'s birthday.`);
+  }
   const began = Date.parse(world.createdAt);
   if (Number.isFinite(began)) {
     const start = forgeDayKey(began);
@@ -177,9 +181,12 @@ async function recalledLine(
       query: { cues, speakers: [unit.name] },
     });
     if (result.lagging) void Promise.resolve(memory.maintain({ runId, debugMode })).catch(() => undefined);
-    // #2066: the newest small memory he holds (recalls come in story order).
-    const top = result.status.phase === "ready" ? (result.recalls?.at(-1)?.content ?? "") : "";
-    return top.trim() ? sliceTextToTokenBudget(top.trim(), RECALLED_TOKENS) : "";
+    // #2066: the newest small memory he holds (recalls come in story order); a chapter's says which it is (its tag).
+    const newest = result.status.phase === "ready" ? result.recalls?.at(-1) : undefined;
+    const top = newest?.content.trim();
+    if (!top) return "";
+    const text = sliceTextToTokenBudget(top, RECALLED_TOKENS);
+    return newest?.tag ? `${newest.tag} ${text}` : text;
   } catch {
     return "";
   }
@@ -190,7 +197,7 @@ export interface NoteDeps extends GenerationDeps {
   memory?: Pick<OtomeMemory, "recall" | "maintain">;
 }
 
-const runNotFound = () => new OtomeForgeError(404, "No such Otome Forge run.", "not-found");
+const runNotFound = () => new OtomeForgeError(404, "No such Otome Hearth story.", "not-found");
 
 /**
  * Today's note from `li`: the stored one while it fits his rupture state, or P16 writes it (once, whoever asks first).
@@ -218,7 +225,7 @@ export async function serveNote(
     const unit = run.units.find((entry) => entry.id === li);
     if (!unit || !run.state.lis[li]) throw new OtomeForgeError(404, "No such love interest.", "not-found");
     if (!unit.bible) throw new OtomeForgeError(409, `${unit.name}'s bible is not written yet.`, "conflict");
-    const { liState, relationship, offscreen } = ownView(run.state, li);
+    const { liState, relationship, offscreen, bondPlayed } = ownView(run.state, li);
     const [recalled, recent] = await Promise.all([
       recalledLine(deps.memory, runId, unit, [relationship, offscreen].filter(Boolean), debugMode),
       recentNotes(deps.store, runId, li, dayKey),
@@ -233,6 +240,7 @@ export async function serveNote(
         player: run.player,
         unit,
         liState,
+        bondPlayed,
         today: noteDay(unit, run.world, now),
         recalled,
         offscreen,

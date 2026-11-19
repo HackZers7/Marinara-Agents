@@ -11,6 +11,11 @@
 // side-with pick (#2046) moves affection by its effects' `affection`, which only the game sets: the one backed gains, a
 // story earning never capped, and each one passed over loses, stopping at that same floor. Nothing here lowers a level
 // or stage, or takes an unlocked extra story back.
+// #2156: a rupture he holds is his grievance with her, and only a serious break earns it: it opens when no rupture
+// stands with him, his trust after the pick is at or below WALKOUT_RUPTURE_TRUST (a walkout always is), none opened
+// with him in this story arc yet, and someone else could still lead a chapter. Otherwise, and for any rupture the
+// protagonist would hold, the grievance is saved as major (still remembered, still −15). While his stands he gains no
+// affection here either (a side-with backing); losses still apply.
 //
 // Every function is pure. The choose route applies a pick inside one revision-checked write of `${R}:state`, and the
 // pick's `${i}/${choiceId}` in `chapters[key].applied` makes a replay, or a request that lost a race, change nothing.
@@ -25,6 +30,9 @@ import type {
   LiState,
   RunState,
 } from "../../../../../client/src/features/otome-forge/shared/api-types.js";
+import { LAST_STAGE, WALKOUT_RUPTURE_TRUST } from "../../../../../client/src/features/otome-forge/shared/arcs.js";
+import { bondStoriesPlayed } from "../../../../../client/src/features/otome-forge/shared/bond.js";
+import { heldAgainst } from "../../../../../client/src/features/otome-forge/shared/dates.js";
 import {
   BEAT_SHIFT_MAX,
   CHAPTER_SHIFT_MAX,
@@ -75,6 +83,15 @@ export function readChapterDelta(value: unknown): LiState["chapterDelta"] {
 /** A grievance still owed: open, or left to fester. */
 const isUnresolved = (grievance: Grievance) => grievance.status === "open" || grievance.status === "festering";
 
+/**
+ * Where a loss stops for this love interest (0.23.0): his current level's floor, or at the last bond rank the last extra
+ * story unlocked. Bond ranks only open past his finale (`li.stage`), and only one beyond the bond stories he has played,
+ * so the floor has to know both.
+ */
+function floorOf(id: string, li: LiState, state: RunState): number {
+  return affectionFloorOf(li.points, li.stage >= LAST_STAGE, bondStoriesPlayed(state.chapters, id));
+}
+
 /** Where a pick happened, and what its node's plan allows. */
 export interface ChoiceContext {
   /** The chapter key. */
@@ -87,6 +104,8 @@ export interface ChoiceContext {
   resolves?: readonly string[];
   /** ISO time of the pick. */
   at: string;
+  /** #2156: the story arc the pick lands in (0 before arcs, and when not given): his grievance opens once an arc. */
+  arc?: number;
 }
 
 export interface ChoiceOutcome {
@@ -196,12 +215,21 @@ export function applyChoiceEffects(state: RunState, effects: readonly Effect[], 
     if (trust || tension) rememberedBy.add(effect.li);
 
     if (effect.grievance && effect.grievance.text.trim()) {
+      const arc = context.arc ?? 0;
+      // #2156: only a serious break opens his grievance (the header); anything milder is a major one.
+      const opens =
+        effect.grievance.by === "li" &&
+        effect.grievance.severity === "rupture" &&
+        !li.rupture &&
+        li.trust <= WALKOUT_RUPTURE_TRUST &&
+        li.grievanceArc !== arc &&
+        Object.entries(lis).some(([id, other]) => id !== effect.li && !heldAgainst(other));
       const grievance: Grievance = {
         id: `g-${key}-${i}-${opened}`,
         li: effect.li,
         by: effect.grievance.by,
         text: clip(effect.grievance.text),
-        severity: effect.grievance.severity,
+        severity: effect.grievance.severity === "rupture" && !opens ? "major" : effect.grievance.severity,
         opened: here,
         status: "open",
       };
@@ -212,7 +240,10 @@ export function applyChoiceEffects(state: RunState, effects: readonly Effect[], 
         harmed.add(effect.li);
       opened += 1;
       li.grievances.push(grievance);
-      if (grievance.severity === "rupture" && !li.rupture) li.rupture = { grievanceId: grievance.id, since: at };
+      if (opens) {
+        li.rupture = { grievanceId: grievance.id, since: at, space: 0 };
+        li.grievanceArc = arc;
+      }
       rememberedBy.add(effect.li);
     }
 
@@ -227,7 +258,9 @@ export function applyChoiceEffects(state: RunState, effects: readonly Effect[], 
     const target = resolve && resolvable.has(resolve.id) ? li.grievances.find((item) => item.id === resolve.id) : null;
     // Never in the beat that opened it, and only once (a closed grievance stays closed).
     if (resolve && target && isUnresolved(target) && target.opened !== here && target.status !== resolve.status) {
-      li.grievances = li.grievances.map((item) => (item === target ? { ...item, status: resolve.status } : item));
+      li.grievances = li.grievances.map((item) =>
+        item === target ? { ...item, status: resolve.status, closedBy: key } : item,
+      );
       if (resolve.status !== "festering" && li.rupture?.grievanceId === target.id) {
         // Another rupture still owed keeps his gates shut (grievances carry no time, so it stands from this pick).
         const next = li.grievances.find((item) => item.severity === "rupture" && isUnresolved(item));
@@ -242,7 +275,7 @@ export function applyChoiceEffects(state: RunState, effects: readonly Effect[], 
 
   for (const id of harmed) {
     const li = lis[id]!;
-    const points = Math.max(affectionFloorOf(li.points), li.points - 15);
+    const points = Math.max(floorOf(id, li, state), li.points - 15);
     if (points !== li.points) {
       lis[id] = { ...li, points };
       rememberedBy.add(id);
@@ -250,7 +283,9 @@ export function applyChoiceEffects(state: RunState, effects: readonly Effect[], 
   }
   for (const [id, amount] of moved) {
     const li = lis[id]!;
-    const points = amount > 0 ? li.points + amount : Math.max(affectionFloorOf(li.points), li.points + amount);
+    // #2156: no gain while his grievance stands.
+    const points =
+      amount > 0 ? li.points + (heldAgainst(li) ? 0 : amount) : Math.max(floorOf(id, li, state), li.points + amount);
     if (points !== li.points) {
       lis[id] = { ...li, points };
       rememberedBy.add(id);
