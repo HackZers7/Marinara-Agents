@@ -270,9 +270,10 @@ export function StoryWriterView({ capabilityProps }: { capabilityProps: Record<s
   // The pair's chapter owns the version history: it dies with the chapter (the store removes it on delete).
   const partHistory = usePartHistory(storyId, partMarkers.chapterId);
 
-  // A corrupt or split pair is detected on mode entry and on every chapter load, never silently.
+  // A corrupt or split pair is detected on mode entry and on every chapter load, never silently — the toast fires
+  // whatever the mode is, and the deps keep it from repeating while the pair stays invalid.
   useEffect(() => {
-    if (!partMode || !partInvalid) return;
+    if (!partInvalid) return;
     toast.warning(t("part.invalidPair"));
   }, [partMode, partInvalid, t]);
 
