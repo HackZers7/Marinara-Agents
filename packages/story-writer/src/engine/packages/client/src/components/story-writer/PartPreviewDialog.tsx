@@ -54,7 +54,11 @@ export interface PartPreviewDialogProps {
    * current Markdown and whether the author changed it after the stream ended.
    */
   onApply(draft: string, edited: boolean): void;
-  onClose(): void;
+  /**
+   * Closes the preview without applying. Like onApply, the dialog hands over the draft's current Markdown and
+   * whether the author changed it after the stream ended, so a cancelled edit can be saved instead of lost.
+   */
+  onClose(draft: string, edited: boolean): void;
 }
 
 export function PartPreviewDialog(props: PartPreviewDialogProps) {
@@ -126,12 +130,12 @@ export function PartPreviewDialog(props: PartPreviewDialogProps) {
     event.stopPropagation();
     // While streaming, leaving the preview means stopping the run; after it ends, it just closes.
     if (props.streaming) props.onStop();
-    else props.onClose();
+    else props.onClose(draft, edited);
   };
 
   const leave = () => {
     // While streaming, a stray click on the scrim must not throw a running draft away; Stop is the only way out.
-    if (!props.streaming) props.onClose();
+    if (!props.streaming) props.onClose(draft, edited);
   };
 
   return (
@@ -180,7 +184,7 @@ export function PartPreviewDialog(props: PartPreviewDialogProps) {
                 className="sw-icon-button"
                 aria-label={t("part.preview.close")}
                 title={t("part.preview.close")}
-                onClick={props.onClose}
+                onClick={() => props.onClose(draft, edited)}
               >
                 <X size={18} aria-hidden="true" />
               </button>

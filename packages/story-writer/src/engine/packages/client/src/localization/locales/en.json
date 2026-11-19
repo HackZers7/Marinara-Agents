@@ -255,6 +255,7 @@
     "generatePairMissing": "Place both part markers before generating a rewrite.",
     "generateAborted": "Rewrite stopped. The draft was discarded; your markers are still in place.",
     "applied": "Rewrite applied. The markers now wrap the new text.",
+    "pairMissing": "The markers are gone, so the rewrite had nothing to replace. Place both part markers and generate again.",
     "preview": {
       "title": "Rewriting part of chapter {{number}}",
       "apply": "Apply",
